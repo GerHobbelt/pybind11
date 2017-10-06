@@ -1504,12 +1504,16 @@ struct move_only_holder_caster : type_caster_base<type> {
             throw std::runtime_error("Non-unique reference, cannot cast to "
                                          "non-copyable holder.");
         }
+        /// TODO(eric.cousineau): Figure out better way to pass `src` to `load_value`.
+        this->src_pass = src;
         return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
     }
 
     static PYBIND11_DESCR name() { return type_caster_base<type>::name(); }
 
 protected:
+    handle src_pass;
+
     friend class type_caster_generic;
     void check_holder_compat() {
         if (!typeinfo->default_holder)
@@ -1517,6 +1521,10 @@ protected:
     }
 
     bool load_value(value_and_holder &&v_h, LoadType load_type) {
+        // From base::load_impl()
+
+//        handle src = src_pass;
+
         if (v_h.holder_constructed()) {
             if (!v_h.inst->simple_layout) {
                 throw std::runtime_error("Can only handle smiple layouts.");
@@ -1552,6 +1560,7 @@ protected:
 
             return true;
         } else {
+            // If a sub-type, ensure it is only single inheritance.
             throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
                              "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
         }

@@ -50,6 +50,10 @@ class trampoline : public Base {
       check("destruction");
       // TODO(eric.cousineau): Flip a bit that we shouldn't call the
       // C++ destructor in tp_dealloc for this instance?
+
+      // Release object.
+      // TODO(eric.cousineau): How to ensure that destructor is called instantly?
+      release_lifetime();
     }
   }
 
@@ -77,6 +81,9 @@ class trampoline : public Base {
 
   py::object patient_;
 };
+
+// TODO(eric.cousineau): Add converter for `is_base<T, trampoline<T>>`, only for
+// `cast` (C++ to Python) to handle swapping lifetime control.
 
 // Trampoline class.
 class PyTest : public trampoline<Test> {
