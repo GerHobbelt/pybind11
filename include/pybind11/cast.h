@@ -1506,6 +1506,10 @@ struct move_only_holder_caster : type_caster_base<type> {
         }
         /// TODO(eric.cousineau): Figure out better way to pass `src` to `load_value`.
         this->src_pass = src;
+
+        // TODO(eric.cousineau): To reduce number of references, require that a list be passed in,
+        // such that the value can be set to zero.
+
         return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
     }
 
@@ -1521,20 +1525,14 @@ protected:
     }
 
     bool load_value(value_and_holder &&v_h, LoadType load_type) {
-        // From base::load_impl()
+        switch (load_type) {
+            case LoadType::PureCpp:
+            {
+                if (!v_h.holder_constructed()) {
+                    throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
+                                         "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
+                }
 
-//        handle src = src_pass;
-
-        if (v_h.holder_constructed()) {
-            if (!v_h.inst->simple_layout) {
-                throw std::runtime_error("Can only handle smiple layouts.");
-            }
-            // Steal.
-            // TODO(eric.cousineau): Twiddle bits.
-
-            const bool is_pure_cpp = true;
-
-            if (is_pure_cpp) {
                 auto& v_h_holder = v_h.holder<holder_type>();
                 if (v_h.value_ptr() != v_h_holder.get()) {
                     throw std::runtime_error("holder pointer does not equal value?");
@@ -1550,6 +1548,38 @@ protected:
                 if (!good) {
                     throw std::runtime_error("Could not deregister?");
                 }
+                break;
+            }
+            case LoadType::DerivedCppSinglePySingle:
+            case LoadType::DerivedCppSinglePyMulti:
+            {
+                if (v_h.holder_constructed()) {
+                    throw cast_error("Python-derived class, but holder constructed value???");
+                }
+
+                throw std::runtime_error("Inheritance not yet handled");
+                break;
+            }
+            default:
+            {
+                throw std::runtime_error("Unsupported loading type for unique_ptr<> ownership");
+            }
+        }
+        // From base::load_impl()
+
+//        handle src = src_pass;
+
+        if (v_h.holder_constructed()) {
+            if (!v_h.inst->simple_layout) {
+                throw std::runtime_error("Can only handle smiple layouts.");
+            }
+            // Steal.
+            // TODO(eric.cousineau): Twiddle bits.
+
+            const bool is_pure_cpp = true;
+
+            if (is_pure_cpp) {
+
             }
 
             // TODO(eric.cousineau):
@@ -1561,8 +1591,7 @@ protected:
             return true;
         } else {
             // If a sub-type, ensure it is only single inheritance.
-            throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
-                             "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
+
         }
     }
 
