@@ -107,24 +107,46 @@ void custom_init_move(py::module& m) {
   PYBIND11_CONCAT(pybind11_init_, _move)(m);
 }
 
-int main() {
-  py::scoped_interpreter guard{};
-
-  py::module m("_move");
-  custom_init_move(m);
-
-  py::dict globals = py::globals();
-  globals["move"] = m;
-
+void check_pure_cpp() {
   py::exec(R"(
 def create_obj():
     return move.Test(10)
-
 obj = move.check_creation(create_obj)
 print(obj.value())
-)", py::globals());
+)");
+}
 
-  cout << "Done" << endl;
+void check_py_child() {
+  py::exec(R"(
+class Child(move.Test):
+    def __init__(self, value):
+        print("py.Child.Child")
+    def __del__(self):
+        print("py.Child.__del__")
+    def value(self):
+        print("py.Child.value")
+        return move.Test.value(self)
+
+def create_obj():
+    return Child(20)
+obj = move.check_creation(create_obj)
+print(obj.value())
+)");
+}
+
+int main() {
+  {
+    py::scoped_interpreter guard{};
+
+    py::module m("_move");
+    custom_init_move(m);
+    py::globals()["move"] = m;
+
+//    check_pure_cpp();
+    check_py_child();
+  }
+
+  cout << "[ Done ]" << endl;
 
   return 0;
 }
