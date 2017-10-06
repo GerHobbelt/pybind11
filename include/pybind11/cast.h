@@ -1454,6 +1454,9 @@ protected:
 template <typename T>
 class type_caster<std::shared_ptr<T>> : public copyable_holder_caster<T, std::shared_ptr<T>> { };
 
+// In `class.h`
+inline bool deregister_instance(instance *self, void *valptr, const type_info *tinfo);
+
 template <typename type, typename holder_type>
 struct move_only_holder_caster : type_caster_base<type> {
         using base = type_caster_base<type>;
@@ -1510,18 +1513,32 @@ protected:
             }
             // Steal.
             // TODO(eric.cousineau): Twiddle bits.
-            value = v_h.value_ptr();
-            v_h.value_ptr() = nullptr;
-            auto& v_h_holder = v_h.holder<holder_type>();
-            holder.reset(v_h_holder.release());
+
+            const bool is_pure_cpp = true;
+
+            if (is_pure_cpp) {
+                auto& v_h_holder = v_h.holder<holder_type>();
+                if (v_h.value_ptr() != v_h_holder.get()) {
+                    throw std::runtime_error("holder pointer does not equal value?");
+                }
+
+                value = v_h.value_ptr();
+                v_h.value_ptr() = nullptr;
+                holder.reset(v_h_holder.release());
+
+                // Pure C++: Remove registered pybind11 instance. There should be only one, given
+                // the precondition on `load`.
+                bool good = detail::deregister_instance(v_h.inst, value, typeinfo);
+                if (!good) {
+                    throw std::runtime_error("Could not deregister?");
+                }
+            }
 
             // TODO(eric.cousineau):
             // Need to ensure that this does not block `type_generic_caster` from
             // re-gaining ownership.
             // Also need to keep references to `self` alive, such that we can access
             // any extended stuff.
-
-            // For non-inherited types, can just deallocate.
 
             return true;
         } else {
