@@ -22,12 +22,70 @@ class Test {
       : value_(value) {
     cout << "Test::Test(int)\n";
   }
-  ~Test() {
+  virtual ~Test() {
     cout << "Test::~Test()\n";
   }
-  int value() const { return value_; }
+  virtual int value() const {
+    cout << "Test::value()\n";
+    return value_;
+  }
  private:
   int value_{};
+};
+
+/// Trampoline class to permit attaching a derived Python object's data
+/// (namely __dict__) to an actual C++ class.
+/// If the object lives purely in C++, then there should only be one reference to
+/// this data.
+template <typename Base>
+class trampoline : public Base {
+ public:
+  typedef trampoline<Base> DirectBase;
+
+  using Base::Base;
+
+  ~trampoline() {
+    if (patient_) {
+      // Ensure that we still are the unique one.
+      check("destruction");
+      // TODO(eric.cousineau): Flip a bit that we shouldn't call the
+      // C++ destructor in tp_dealloc for this instance?
+    }
+  }
+
+  void extend_lifetime(py::object patient) {
+    patient_ = std::move(patient);
+    if (patient_.ref_count() != 1) {
+
+    }
+  }
+
+  py::object release_lifetime() {
+    // Remove existing reference.
+    py::object tmp = std::move(patient_);
+    assert(!patient_);
+    return tmp;
+  }
+
+ private:
+
+  void check(const string& context) {
+    if (patient_.ref_count() != 1) {
+      throw std::runtime_error("At " + context + ", ref_count != 1");
+    }
+  }
+
+  py::object patient_;
+};
+
+// Trampoline class.
+class PyTest : public trampoline<Test> {
+ public:
+  using DirectBase::DirectBase;
+
+  int value() const override {
+    PYBIND11_OVERLOAD(int, Test, value);
+  }
 };
 
 unique_ptr<Test> check_creation(py::function create_obj) {
@@ -37,7 +95,7 @@ unique_ptr<Test> check_creation(py::function create_obj) {
 }
 
 PYBIND11_MODULE(_move, m) {
-  py::class_<Test>(m, "Test")
+  py::class_<Test, PyTest>(m, "Test")
     .def(py::init<int>())
     .def("value", &Test::value);
 
