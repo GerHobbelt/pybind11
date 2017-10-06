@@ -1512,7 +1512,17 @@ protected:
             // TODO(eric.cousineau): Twiddle bits.
             value = v_h.value_ptr();
             v_h.value_ptr() = nullptr;
-            holder.reset(v_h.holder<holder_type>().release());
+            auto& v_h_holder = v_h.holder<holder_type>();
+            holder.reset(v_h_holder.release());
+
+            // TODO(eric.cousineau):
+            // Need to ensure that this does not block `type_generic_caster` from
+            // re-gaining ownership.
+            // Also need to keep references to `self` alive, such that we can access
+            // any extended stuff.
+
+            // For non-inherited types, can just deallocate.
+
             return true;
         } else {
             throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
