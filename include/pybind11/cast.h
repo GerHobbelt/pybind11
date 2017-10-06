@@ -479,6 +479,13 @@ inline PyThreadState *get_thread_state_unchecked() {
 inline void keep_alive_impl(handle nurse, handle patient);
 inline PyObject *make_new_instance(PyTypeObject *type);
 
+enum class LoadType {
+  PureCpp,
+  DerivedCppSinglePySingle,
+  DerivedCppSinglePyMulti,
+  DerivedCppMulti
+};
+
 class type_caster_generic {
 public:
     PYBIND11_NOINLINE type_caster_generic(const std::type_info &type_info)
@@ -565,7 +572,7 @@ public:
     }
 
     // Base methods for generic caster; there are overridden in copyable_holder_caster
-    void load_value(value_and_holder &&v_h) {
+    void load_value(value_and_holder &&v_h, LoadType) {
         auto *&vptr = v_h.value_ptr();
         // Lazy allocation for unallocated values:
         if (vptr == nullptr) {
@@ -643,7 +650,8 @@ public:
         // Case 1: If src is an exact type match for the target type then we can reinterpret_cast
         // the instance's value pointer to the target type:
         if (srctype == typeinfo->type) {
-            this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder());
+            this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(),
+                             LoadType::PureCpp);
             return true;
         }
         // Case 2: We have a derived class
@@ -658,7 +666,8 @@ public:
             // is extremely common, we handle it specially to avoid the loop iterator and type
             // pointer lookup overhead)
             if (bases.size() == 1 && (no_cpp_mi || bases.front()->type == typeinfo->type)) {
-                this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder());
+                this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(),
+                                 LoadType::DerivedCppSinglePySingle);
                 return true;
             }
             // Case 2b: the python type inherits from multiple C++ bases.  Check the bases to see if
@@ -667,7 +676,8 @@ public:
             else if (bases.size() > 1) {
                 for (auto base : bases) {
                     if (no_cpp_mi ? PyType_IsSubtype(base->type, typeinfo->type) : base->type == typeinfo->type) {
-                        this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(base));
+                        this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(base),
+                                         LoadType::DerivedCppSinglePyMulti);
                         return true;
                     }
                 }
@@ -1413,7 +1423,7 @@ protected:
             throw cast_error("Unable to load a custom holder type from a default-holder instance");
     }
 
-    bool load_value(value_and_holder &&v_h) {
+    bool load_value(value_and_holder &&v_h, LoadType) {
         if (v_h.holder_constructed()) {
             value = v_h.value_ptr();
             holder = v_h.holder<holder_type>();
@@ -1506,7 +1516,7 @@ protected:
             throw cast_error("Unable to load a non-default holder type (unique_ptr)");
     }
 
-    bool load_value(value_and_holder &&v_h) {
+    bool load_value(value_and_holder &&v_h, LoadType load_type) {
         if (v_h.holder_constructed()) {
             if (!v_h.inst->simple_layout) {
                 throw std::runtime_error("Can only handle smiple layouts.");
