@@ -1297,6 +1297,69 @@ inline iterator iter(handle obj) {
 }
 /// @} python_builtins
 
+
+
+/// Trampoline class to permit attaching a derived Python object's data
+/// (namely __dict__) to an actual C++ class.
+/// If the object lives purely in C++, then there should only be one reference to
+/// this data.
+template <typename Base>
+class trampoline : public Base {
+ public:
+  typedef trampoline<Base> DirectBase;
+
+  using Base::Base;
+
+  ~trampoline() {
+      if (patient_) {
+          // Ensure that we still are the unique one.
+          check("being destructed");
+          // TODO(eric.cousineau): Flip a bit that we shouldn't call the
+          // C++ destructor in tp_dealloc for this instance?
+
+          // Release object.
+          // TODO(eric.cousineau): Ensure that destructor is called instantly!!!
+          release_cpp_lifetime();
+      }
+  }
+
+  void use_cpp_lifetime(object&& patient) {
+      if (lives_in_cpp()) {
+          throw std::runtime_error("Instance already lives in C++");
+      }
+      patient_ = std::move(patient);
+      check("entering C++");
+  }
+
+  bool lives_in_cpp() const {
+      // NOTE: This is *false* if, for whatever reason, the trampoline class is
+      // constructed in C++... Meh.
+      return static_cast<bool>(patient_);
+  }
+
+  object release_cpp_lifetime() {
+      if (!lives_in_cpp()) {
+          throw std::runtime_error("Instance does not live in C++");
+      }
+      // Remove existing reference.
+      check("exiting C++");
+      object tmp = std::move(patient_);
+      assert(!patient_);
+      return tmp;
+  }
+
+ private:
+  // Throw an error if this stuff is not unique.
+  void check(const std::string& context) {
+      if (patient_.ref_count() != 1) {
+          throw std::runtime_error("When " + context + ", ref_count != 1");
+      }
+  }
+
+  object patient_;
+};
+
+
 NAMESPACE_BEGIN(detail)
 template <typename D> iterator object_api<D>::begin() const { return iter(derived()); }
 template <typename D> iterator object_api<D>::end() const { return iterator::sentinel(); }

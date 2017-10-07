@@ -1565,14 +1565,41 @@ protected:
                 break;
             }
             case LoadType::DerivedCppSinglePySingle:
-            case LoadType::DerivedCppSinglePyMulti:
             {
                 if (v_h.holder_constructed()) {
                     throw cast_error("Python-derived class, but holder constructed value???");
                 }
 
-                throw std::runtime_error("Inheritance not yet handled");
+                // Attempt to cast to trampoline.
+
+                // TODO(eric.cousineau): Move C++ lifetime extension to instance level,
+                // to permit it to be type-erased (so that you can upcast more easily).
+
+                value = v_h.value_ptr();
+
+                auto* cppobj = reinterpret_cast<type*>(value);
+                auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                if (tr == nullptr) {
+                    throw std::runtime_error(
+                        "To give C++ owernship of a Python-derived class, you must ensure that "
+                        "the trampoline class is wrapped with pybind11::trampoline<>");
+                }
+
+                // Let it take ownership.
+                tr->use_cpp_lifetime(std::move(obj_exclusive));
+
+                // TODO(eric.cousineau): Anything else to do about this???
+                v_h.inst->owned = false;
+
+                // Keep instance registered.
                 break;
+            }
+            case LoadType::DerivedCppSinglePyMulti:
+            {
+                // TODO(eric.cousineau): Would need to ensure no other C++ py::trampoline<> instances
+                // had a patient lifetime extension.
+                throw std::runtime_error(
+                    "C++ single-inheritance with Python multi-inheritance is not supported for casting unique_ptr<>");
             }
             default:
             {

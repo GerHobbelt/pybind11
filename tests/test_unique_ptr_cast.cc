@@ -33,62 +33,15 @@ class Test {
   int value_{};
 };
 
-/// Trampoline class to permit attaching a derived Python object's data
-/// (namely __dict__) to an actual C++ class.
-/// If the object lives purely in C++, then there should only be one reference to
-/// this data.
-template <typename Base>
-class trampoline : public Base {
- public:
-  typedef trampoline<Base> DirectBase;
-
-  using Base::Base;
-
-  ~trampoline() {
-    if (patient_) {
-      // Ensure that we still are the unique one.
-      check("destruction");
-      // TODO(eric.cousineau): Flip a bit that we shouldn't call the
-      // C++ destructor in tp_dealloc for this instance?
-
-      // Release object.
-      // TODO(eric.cousineau): How to ensure that destructor is called instantly?
-      release_lifetime();
-    }
-  }
-
-  void extend_lifetime(py::object patient) {
-    patient_ = std::move(patient);
-    if (patient_.ref_count() != 1) {
-
-    }
-  }
-
-  py::object release_lifetime() {
-    // Remove existing reference.
-    py::object tmp = std::move(patient_);
-    assert(!patient_);
-    return tmp;
-  }
-
- private:
-
-  void check(const string& context) {
-    if (patient_.ref_count() != 1) {
-      throw std::runtime_error("At " + context + ", ref_count != 1");
-    }
-  }
-
-  py::object patient_;
-};
 
 // TODO(eric.cousineau): Add converter for `is_base<T, trampoline<T>>`, only for
 // `cast` (C++ to Python) to handle swapping lifetime control.
 
 // Trampoline class.
-class PyTest : public trampoline<Test> {
+class PyTest : public py::trampoline<Test> {
  public:
-  using DirectBase::DirectBase;
+  typedef py::trampoline<Test> Base;
+  using Base::Base;
 
   int value() const override {
     PYBIND11_OVERLOAD(int, Test, value);
