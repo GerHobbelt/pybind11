@@ -50,6 +50,8 @@ class PyTest : public py::trampoline<Test> {
 
 unique_ptr<Test> check_creation(py::function create_obj) {
   py::object obj = create_obj();
+  // Test getting a pointer.
+//  Test* in_test = py::cast<Test*>(obj);
   unique_ptr<Test> in = py::cast<unique_ptr<Test>>(std::move(obj));
   return in;
 }
@@ -80,6 +82,7 @@ void check_py_child() {
   py::exec(R"(
 class Child(move.Test):
     def __init__(self, value):
+        move.Test.__init__(self, value)
         print("py.Child.Child")
     def __del__(self):
         print("py.Child.__del__")

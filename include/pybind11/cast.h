@@ -1575,7 +1575,12 @@ protected:
                 // TODO(eric.cousineau): Move C++ lifetime extension to instance level,
                 // to permit it to be type-erased (so that you can upcast more easily).
 
+                // Ensure that we cast appropriately.
+//                type_caster_generic::load_value(v_h);
                 value = v_h.value_ptr();
+                if (value == nullptr) {
+                    throw std::runtime_error("C++ init has not been called");
+                }
 
                 auto* cppobj = reinterpret_cast<type*>(value);
                 auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
