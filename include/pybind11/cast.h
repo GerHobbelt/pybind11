@@ -516,7 +516,17 @@ public:
                 if (instance_type && same_type(*instance_type->cpptype, *tinfo->cpptype)) {
                     if (policy == return_value_policy::automatic || policy == return_value_policy::take_ownership) {
                         // Reclaim ownership.
-                        throw std::runtime_error("Reclaiming not yet implemented");
+                        instance* inst = it_i->second;
+                        value_and_holder v_h = inst->get_value_and_holder();
+                        if (v_h.holder_constructed()) {
+                            throw std::runtime_error("Should not have been holder constructed?");
+                        }
+                        if (!tinfo->has_cpp_release) {
+                            throw std::runtime_error("Unable to handle reclaiming from C++");
+                        }
+                        // Er...
+                        void* holder_raw = v_h.vh[1];
+                        return tinfo->reclaim_from_cpp(inst, holder_raw).release();
                     } else {
                         return handle((PyObject *) it_i->second).inc_ref();
                     }

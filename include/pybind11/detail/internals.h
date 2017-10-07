@@ -108,6 +108,13 @@ struct type_info {
     bool default_holder : 1;
     /* true if this is a type registered with py::module_local */
     bool module_local : 1;
+
+    // For classes wrapped in `trampoline<>`. See `move_only_holder_caster` for more info.
+    // Pure / direct C++ objects do not need any fancy releasing mechanisms. They are simply
+    // unwrapped and passed back.
+    bool has_cpp_release = false;
+    void (*release_to_cpp)(instance* inst, void* external_holder, object&& obj) = nullptr;
+    object (*reclaim_from_cpp)(instance* inst, void* external_holder) = nullptr;
 };
 
 /// Tracks the `internals` and `type_info` ABI version independent of the main library version

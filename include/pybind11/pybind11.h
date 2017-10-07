@@ -910,6 +910,13 @@ protected:
         tinfo->default_holder = rec.default_holder;
         tinfo->module_local = rec.module_local;
 
+        tinfo->has_cpp_release = rec.has_cpp_release;
+        tinfo->release_to_cpp = rec.release_to_cpp;
+        tinfo->reclaim_from_cpp = rec.reclaim_from_cpp;
+        if (tinfo->has_cpp_release) {
+            assert(tinfo->release_to_cpp && tinfo->reclaim_from_cpp);
+        }
+
         auto &internals = get_internals();
         auto tindex = std::type_index(*rec.type);
         tinfo->direct_conversions = &internals.direct_conversions[tindex];
@@ -1055,6 +1062,62 @@ public:
         record.init_instance = init_instance;
         record.dealloc = dealloc;
         record.default_holder = std::is_same<holder_type, std::unique_ptr<type>>::value;
+        if (record.default_holder) {
+            record.has_cpp_release = std::is_base_of<trampoline<type>, type_alias>::value;
+            if (record.has_cpp_release) {
+                record.release_to_cpp = [](instance* inst, void* external_holder_raw, object&& obj) {
+                  auto v_h = inst->get_value_and_holder();
+                  if (!v_h.holder_constructed()) {
+                      throw std::runtime_error("Should be holder constructed");
+                  }
+                  {
+                      auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
+                      auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                      if (tr == nullptr) {
+                          // This shouldn't happen here...
+                          throw std::runtime_error("Bad mojo - could not upcast");
+                      }
+                      // Let it take ownership.
+                      // Keep instance registered.
+                      handle h = obj;
+                      tr->use_cpp_lifetime(std::move(obj));
+                      assert(h.ref_count() == 1);
+                  }
+                  {
+                      holder_type& holder = v_h.holder<holder_type>();
+                      holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
+
+                      external_holder = std::move(holder);
+                      holder.~holder_type();
+                      v_h.set_holder_constructed(false);
+                  }
+                };
+                record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
+                  auto v_h = inst->get_value_and_holder();
+                  if (v_h.holder_constructed()) {
+                      throw std::runtime_error("Should not be holder constructed");
+                  }
+                  {
+                      holder_type& holder = v_h.holder<holder_type>();
+                      holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
+                      new (&holder) holder_type(std::move(external_holder));
+                      v_h.set_holder_constructed(true);
+                  }
+                  {
+                      auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
+                      auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                      if (tr == nullptr) {
+                          // This shouldn't happen here...
+                          throw std::runtime_error("Bad mojo - could not upcast");
+                      }
+                      // Return newly created object.
+                      object obj = tr->release_cpp_lifetime();
+                      assert(obj.ref_count() == 1);
+                      return obj;
+                  }
+                };
+            };
+        }
 
         set_operator_new<type>(&record);
 
