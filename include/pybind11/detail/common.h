@@ -354,6 +354,8 @@ enum class return_value_policy : uint8_t {
     reference_internal
 };
 
+class object;
+
 NAMESPACE_BEGIN(detail)
 
 inline static constexpr int log2(size_t n, int k = 0) { return (n <= 1) ? k : log2(n >> 1, k + 1); }
@@ -422,9 +424,9 @@ struct instance {
     bool simple_instance_registered : 1;
     /// If true, get_internals().patients has an entry for this object
     bool has_patients : 1;
-//    /// If the instance is a Python-derived type, but is owned in C++, then class_::deallocate()
-//    /// should not attempt to free memory.
-//    bool py_derived_lives_in_cpp = false;
+    /// If the instance is a Python-derived type that is owned in C++, then this method
+    /// will permit the instance to be reclaimed back by Python.
+    object (*reclaim_from_cpp)(instance* inst, void* external_holder) = nullptr;
 
     /// Initializes all of the above type/values/holders data (but not the instance values themselves)
     void allocate_layout();

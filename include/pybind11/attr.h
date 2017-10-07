@@ -228,7 +228,7 @@ struct type_record {
 
     /// See `type_info::has_cpp_release`.
     bool has_cpp_release = false;
-  void (*release_to_cpp)(instance* inst, void* external_holder, object&& obj) = nullptr;
+    void (*release_to_cpp)(instance* inst, void* external_holder, object&& obj) = nullptr;
   object (*reclaim_from_cpp)(instance* inst, void* external_holder) = nullptr;
 
     /// List of base classes of the newly created type

@@ -1033,6 +1033,7 @@ public:
     using type = type_;
     using type_alias = detail::exactly_one_t<is_subtype, void, options...>;
     constexpr static bool has_alias = !std::is_void<type_alias>::value;
+    constexpr static bool has_trampoline = std::is_base_of<trampoline<type>, type_alias>::value;
     using holder_type = detail::exactly_one_t<is_holder, std::unique_ptr<type>, options...>;
 
     static_assert(detail::all_of<is_valid_class_option<options>...>::value,
@@ -1065,62 +1066,13 @@ public:
         record.dealloc = dealloc;
         record.default_holder = std::is_same<holder_type, std::unique_ptr<type>>::value;
         if (record.default_holder) {
-            record.has_cpp_release = std::is_base_of<trampoline<type>, type_alias>::value;
+            // TODO(eric.cousineau): Determine how to permit releasing without a trampoline...
+            record.has_cpp_release = false;
+            throw std::runtime_error("Fix");
             if (record.has_cpp_release) {
-                record.release_to_cpp = [](instance* inst, void* external_holder_raw, object&& obj) {
-                  auto v_h = inst->get_value_and_holder();
-                  if (!inst->owned || !v_h.holder_constructed()) {
-                      throw std::runtime_error("Python-extended C++ object should not be owned by pybind11");
-                  }
-                  {
-                      auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                      auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
-                      if (tr == nullptr) {
-                          // This shouldn't happen here...
-                          throw std::runtime_error("Bad mojo - could not upcast");
-                      }
-                      // Let the external holder take ownership, but keep instance registered.
-                      handle h = obj;
-                      tr->use_cpp_lifetime(std::move(obj));
-                      assert(h.ref_count() == 1);
-                  }
-                  {
-                      holder_type& holder = v_h.holder<holder_type>();
-                      holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
-
-                      external_holder = std::move(holder);
-                      holder.~holder_type();
-                      v_h.set_holder_constructed(false);
-                      inst->owned = false;
-                  }
-                };
+                record.release_to_cpp = release_to_cpp;
                 record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
-                  auto v_h = inst->get_value_and_holder();
-                  if (inst->owned || v_h.holder_constructed()) {
-                      throw std::runtime_error("Derived Python object should live in C++");
-                  }
-                  {
-                      // TODO: Use `init_holder_from_existing`
-                      holder_type& holder = v_h.holder<holder_type>();
-                      holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
-                      new (&holder) holder_type(std::move(external_holder));
-                      v_h.set_holder_constructed(true);
-                  }
-                  {
-                      auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                      auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
-                      if (tr == nullptr) {
-                          // This shouldn't happen here...
-                          throw std::runtime_error("Bad mojo - could not upcast");
-                      }
-                      // Return newly created object.
-                      object obj = tr->release_cpp_lifetime();
-                      assert(obj.ref_count() == 1);
 
-                      inst->owned = true;
-
-                      return obj;
-                  }
                 };
             };
         }
@@ -1138,6 +1090,78 @@ public:
         if (has_alias) {
             auto &instances = record.module_local ? registered_local_types_cpp() : get_internals().registered_types_cpp;
             instances[std::type_index(typeid(type_alias))] = instances[std::type_index(typeid(type))];
+        }
+    }
+
+    static void release_to_cpp(detail::instance* inst, void* external_holder_raw, object&& obj) {
+        using detail::LoadType;
+        auto v_h = inst->get_value_and_holder();
+        if (!inst->owned || !v_h.holder_constructed()) {
+            throw std::runtime_error("Python-extended C++ object should not be owned by pybind11");
+        }
+        LoadType load_type = determine_load_type(obj, v_h.type);
+        switch (load_type) {
+            case LoadType::PureCpp: {
+                // NOTE: Given that `obj` is now exclusive, then once it goes out of scope,
+                // then the registered instance for this object should be destroyed, and this
+                // should become a pure C++ object, without any ties to `pybind11`.
+                break;
+            }
+            case LoadType::DerivedCppSinglePySingle: {
+                auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
+                auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                if (tr == nullptr) {
+                    // This shouldn't happen here...
+                    throw std::runtime_error("Bad mojo - could not upcast");
+                }
+                // Let the external holder take ownership, but keep instance registered.
+                handle h = obj;
+                tr->use_cpp_lifetime(std::move(obj));
+                assert(h.ref_count() == 1);
+            }
+            default: {
+                throw std::runtime_error("Unsupported load type (multiple inheritance)");
+            }
+        }
+        holder_type& holder = v_h.holder<holder_type>();
+        holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
+        external_holder = std::move(holder);
+        holder.~holder_type();
+        v_h.set_holder_constructed(false);
+
+        // TODO: In this instance, register `reclaim_from_cpp` as the instances reclamation.
+        inst->owned = false;
+
+        // Register this type's reclamation procedure, since it's trampoline may have the contained object.
+        inst->reclaim_from_cpp = reclaim_from_cpp;
+    }
+
+    static object reclaim_from_cpp(detail::instance* inst, void* external_holder_raw) {
+        auto v_h = inst->get_value_and_holder();
+        if (inst->owned || v_h.holder_constructed()) {
+            throw std::runtime_error("Derived Python object should live in C++");
+        }
+        {
+            // TODO: Use `init_holder_from_existing`
+            holder_type& holder = v_h.holder<holder_type>();
+            holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
+            new (&holder) holder_type(std::move(external_holder));
+            v_h.set_holder_constructed(true);
+        }
+        {
+            auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
+            auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+            if (tr == nullptr) {
+                // This shouldn't happen here...
+                throw std::runtime_error("Bad mojo - could not upcast");
+            }
+            // Return newly created object.
+            object obj = tr->release_cpp_lifetime();
+            assert(obj.ref_count() == 1);
+
+            inst->owned = true;
+
+            return obj;
         }
     }
 
