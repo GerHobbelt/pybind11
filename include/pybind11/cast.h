@@ -1564,17 +1564,16 @@ protected:
         switch (load_type) {
             case LoadType::PureCpp:
             {
-//                // Pure C++: Remove registered pybind11 instance. There should be only one, given
-//                // the precondition on `load`.
-//                bool good = detail::deregister_instance(v_h.inst, value, typeinfo);
-//                if (!good) {
-//                    throw std::runtime_error("Could not deregister?");
-//                }
+                // Pure C++: Remove registered pybind11 instance. There should be only one, given
+                // the precondition on `load`.
+                // Because of this, we can release the object into the wild and not
+                // care about moving around Python objects.
 
                 // TODO(eric.cousineau): Consolidate this with PyDerived case?
 
                 if (typeinfo->has_cpp_release) {
-                    throw std::runtime_error("Bad setup of has_cpp_release?");
+                    std::cout << "TODO: Use newer cpp_release stuff" << std::endl;
+//                    throw std::runtime_error("Bad setup of has_cpp_release?");
                 }
 
                 // Narrow scope to catch any odd destructors... somehow??????

@@ -120,7 +120,7 @@ int main() {
     custom_init_move(m);
     py::globals()["move"] = m;
 
-//    check_pure_cpp();
+//    check_pure_cpp();  // Currently broken.
     check_py_child();
   }
 
