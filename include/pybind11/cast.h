@@ -513,8 +513,14 @@ public:
         auto it_instances = get_internals().registered_instances.equal_range(src);
         for (auto it_i = it_instances.first; it_i != it_instances.second; ++it_i) {
             for (auto instance_type : detail::all_type_info(Py_TYPE(it_i->second))) {
-                if (instance_type && same_type(*instance_type->cpptype, *tinfo->cpptype))
-                    return handle((PyObject *) it_i->second).inc_ref();
+                if (instance_type && same_type(*instance_type->cpptype, *tinfo->cpptype)) {
+                    if (policy == return_value_policy::automatic || policy == return_value_policy::take_ownership) {
+                        // Reclaim ownership.
+                        throw std::runtime_error("Reclaiming not yet implemented");
+                    } else {
+                        return handle((PyObject *) it_i->second).inc_ref();
+                    }
+                }
             }
         }
 
@@ -1546,7 +1552,7 @@ protected:
             throw std::runtime_error("C++ init has not been called");
         }
 
-        // Narrow scope to catch any odd destructors.
+        // Narrow scope to catch any odd destructors... somehow??????
         {
             auto& v_h_holder = v_h.holder<holder_type>();
             if (v_h.value_ptr() != v_h_holder.get()) {
