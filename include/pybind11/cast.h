@@ -1559,6 +1559,9 @@ protected:
                 if (!good) {
                     throw std::runtime_error("Could not deregister?");
                 }
+
+                // TODO(eric.cousineau): Consider destructing obj_exclusive???
+                obj_exclusive = none();
                 break;
             }
             case LoadType::DerivedCppSinglePySingle:
