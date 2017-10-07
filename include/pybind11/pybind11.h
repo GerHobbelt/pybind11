@@ -1098,6 +1098,7 @@ public:
                       throw std::runtime_error("Should not be holder constructed");
                   }
                   {
+                      // TODO: Use `init_holder_from_existing`
                       holder_type& holder = v_h.holder<holder_type>();
                       holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
                       new (&holder) holder_type(std::move(external_holder));
@@ -1385,6 +1386,8 @@ private:
             v_h.set_holder_constructed(false);
         }
         else {
+            // TODO(eric.cousineau): See if this should be disabled if `v_h` somehow indicates
+            // that the value is still living in C++.
             detail::call_operator_delete(v_h.value_ptr<type>(), v_h.type->type_size);
         }
         v_h.value_ptr() = nullptr;

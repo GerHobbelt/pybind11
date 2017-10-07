@@ -525,8 +525,7 @@ public:
                             throw std::runtime_error("Unable to handle reclaiming from C++");
                         }
                         // Er...
-                        void* holder_raw = v_h.vh[1];
-                        return tinfo->reclaim_from_cpp(inst, holder_raw).release();
+                        return tinfo->reclaim_from_cpp(inst, const_cast<void*>(existing_holder)).release();
                     } else {
                         return handle((PyObject *) it_i->second).inc_ref();
                     }
