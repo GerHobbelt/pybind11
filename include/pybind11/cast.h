@@ -1508,7 +1508,7 @@ struct move_only_holder_caster : type_caster_base<type> {
             throw std::runtime_error("May only use std::move() for unique_ptr casting");
         }
 
-        if (src.ref_count() != 1) {
+        if (obj_exclusive.ref_count() != 1) {
             throw std::runtime_error("Non-unique reference, cannot cast to "
                                          "non-copyable holder.");
         }
@@ -1536,67 +1536,65 @@ protected:
     }
 
     bool load_value(value_and_holder &&v_h, LoadType load_type) {
+        if (!v_h.holder_constructed()) {
+            throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
+                                 "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
+        }
+        auto& v_h_holder = v_h.holder<holder_type>();
+        if (v_h.value_ptr() != v_h_holder.get()) {
+            throw std::runtime_error("holder pointer does not equal value?");
+        }
+
+        value = v_h.value_ptr();
+        if (value == nullptr) {
+            throw std::runtime_error("C++ init has not been called");
+        }
+
+        // Finish off the holder.
+        // Transfer instance's holder to this holder.
+        holder = std::move(v_h_holder);
+        // Enforce holder destruction, turn existing object into a reference
+        // only.
+        //@see class_::dealloc().
+        v_h_holder.~holder_type();
+        v_h.set_holder_constructed(false);
+
         switch (load_type) {
             case LoadType::PureCpp:
             {
-                if (!v_h.holder_constructed()) {
-                    throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
-                                         "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
-                }
+//                // Pure C++: Remove registered pybind11 instance. There should be only one, given
+//                // the precondition on `load`.
+//                bool good = detail::deregister_instance(v_h.inst, value, typeinfo);
+//                if (!good) {
+//                    throw std::runtime_error("Could not deregister?");
+//                }
 
-                auto& v_h_holder = v_h.holder<holder_type>();
-                if (v_h.value_ptr() != v_h_holder.get()) {
-                    throw std::runtime_error("holder pointer does not equal value?");
-                }
-
-                value = v_h.value_ptr();
-                v_h.value_ptr() = nullptr;
-                holder.reset(v_h_holder.release());
-
-                // Pure C++: Remove registered pybind11 instance. There should be only one, given
-                // the precondition on `load`.
-                bool good = detail::deregister_instance(v_h.inst, value, typeinfo);
-                if (!good) {
-                    throw std::runtime_error("Could not deregister?");
-                }
-
+                // This should cause the instance to de-register.
                 // TODO(eric.cousineau): Consider destructing obj_exclusive???
                 obj_exclusive = none();
                 break;
             }
             case LoadType::DerivedCppSinglePySingle:
             {
-                if (v_h.holder_constructed()) {
-                    throw cast_error("Python-derived class, but holder constructed value???");
-                }
-
                 // Attempt to cast to trampoline.
 
-                // TODO(eric.cousineau): Move C++ lifetime extension to instance level,
-                // to permit it to be type-erased (so that you can upcast more easily).
-
-                // Ensure that we cast appropriately.
-//                type_caster_generic::load_value(v_h);
-                value = v_h.value_ptr();
-                if (value == nullptr) {
-                    throw std::runtime_error("C++ init has not been called");
-                }
+                // TODO(eric.cousineau): Move C++ lifetime extension to `struct instance` level,
+                // to permit it to be type-erased (so that you can upcast / downcast more easily).
 
                 auto* cppobj = reinterpret_cast<type*>(value);
                 auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
                 if (tr == nullptr) {
                     throw std::runtime_error(
                         "To give C++ owernship of a Python-derived class, you must ensure that "
-                        "the trampoline class is wrapped with pybind11::trampoline<>");
+                            "the trampoline class is wrapped with pybind11::trampoline<>");
                 }
 
                 // Let it take ownership.
+                // Keep instance registered.
                 tr->use_cpp_lifetime(std::move(obj_exclusive));
 
-                // TODO(eric.cousineau): Anything else to do about this???
-                v_h.inst->owned = false;
+                // TODO(eric.cousineau): Anything else to do???
 
-                // Keep instance registered.
                 break;
             }
             case LoadType::DerivedCppSinglePyMulti:
@@ -1610,34 +1608,6 @@ protected:
             {
                 throw std::runtime_error("Unsupported loading type for unique_ptr<> ownership");
             }
-        }
-        // From base::load_impl()
-
-//        handle src = src_pass;
-
-        if (v_h.holder_constructed()) {
-            if (!v_h.inst->simple_layout) {
-                throw std::runtime_error("Can only handle smiple layouts.");
-            }
-            // Steal.
-            // TODO(eric.cousineau): Twiddle bits.
-
-            const bool is_pure_cpp = true;
-
-            if (is_pure_cpp) {
-
-            }
-
-            // TODO(eric.cousineau):
-            // Need to ensure that this does not block `type_generic_caster` from
-            // re-gaining ownership.
-            // Also need to keep references to `self` alive, such that we can access
-            // any extended stuff.
-
-            return true;
-        } else {
-            // If a sub-type, ensure it is only single inheritance.
-
         }
     }
 
