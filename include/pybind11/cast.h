@@ -486,6 +486,62 @@ enum class LoadType {
   DerivedCppMulti
 };
 
+typedef decltype(all_type_info(nullptr)) bases_t;
+typedef type_info* base_ptr_t;
+
+LoadType determine_load_type(handle src, const type_info* typeinfo,
+                             const bases_t** out_bases = nullptr,
+                             base_ptr_t* out_base = nullptr) {
+    // Null out inputs.
+    if (out_bases)
+        *out_bases = nullptr;
+    if (out_base)
+        *out_base = nullptr;
+    PyTypeObject *srctype = Py_TYPE(src.ptr());
+    // See `type_caster_generic::load_impl` below for more detail on comments.
+
+    // Case 1: If src is an exact type match for the target type then we can reinterpret_cast
+    // the instance's value pointer to the target type:
+    if (srctype == typeinfo->type) {
+        return LoadType::PureCpp;
+    }
+    // Case 2: We have a derived class
+    else if (PyType_IsSubtype(srctype, typeinfo->type)) {
+        const bases_t& bases = all_type_info(srctype);
+        if (out_bases)
+            *out_bases = &bases;  // Copy to output for caching.
+        const bool no_cpp_mi = typeinfo->simple_type;
+        // Case 2a: the python type is a Python-inherited derived class that inherits from just
+        // one simple (no MI) pybind11 class, or is an exact match, so the C++ instance is of
+        // the right type and we can use reinterpret_cast.
+        // (This is essentially the same as case 2b, but because not using multiple inheritance
+        // is extremely common, we handle it specially to avoid the loop iterator and type
+        // pointer lookup overhead)
+        if (bases.size() == 1 && (no_cpp_mi || bases.front()->type == typeinfo->type)) {
+            return LoadType::DerivedCppSinglePySingle;
+        }
+        // Case 2b: the python type inherits from multiple C++ bases.  Check the bases to see if
+        // we can find an exact match (or, for a simple C++ type, an inherited match); if so, we
+        // can safely reinterpret_cast to the relevant pointer.
+        else if (bases.size() > 1) {
+           for (auto base : bases) {
+               if (no_cpp_mi ? PyType_IsSubtype(base->type, typeinfo->type) : base->type == typeinfo->type) {
+                   if (out_base) {
+                       *out_base = base;
+                   }
+                   return LoadType::DerivedCppSinglePyMulti;
+               }
+           }
+        }
+        // Case 2c: C++ multiple inheritance is involved and we couldn't find an exact type match
+        // in the registered bases, above, so try implicit casting (needed for proper C++ casting
+        // when MI is involved).
+        return LoadType::DerivedCppMulti;
+    } else {
+        throw std::runtime_error("Unknown load type?");
+    }
+}
+
 class type_caster_generic {
 public:
     PYBIND11_NOINLINE type_caster_generic(const std::type_info &type_info)
@@ -519,13 +575,9 @@ public:
                         // then use the `has_cpp_release` mechanisms to reclaim ownership.
                         instance* inst = it_i->second;
                         value_and_holder v_h = inst->get_value_and_holder();
-                        if (v_h.holder_constructed()) {
-                            throw std::runtime_error("Should not have been holder constructed?");
-                        }
                         if (!tinfo->has_cpp_release) {
                             throw std::runtime_error("Unable to handle reclaiming from C++");
                         }
-                        // Er...
                         return tinfo->reclaim_from_cpp(inst, const_cast<void*>(existing_holder)).release();
                     } else {
                         return handle((PyObject *) it_i->second).inc_ref();
@@ -661,52 +713,32 @@ public:
         auto &this_ = static_cast<ThisT &>(*this);
         this_.check_holder_compat();
 
-        PyTypeObject *srctype = Py_TYPE(src.ptr());
-
-        // Case 1: If src is an exact type match for the target type then we can reinterpret_cast
-        // the instance's value pointer to the target type:
-        if (srctype == typeinfo->type) {
-            this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(),
-                             LoadType::PureCpp);
-            return true;
-        }
-        // Case 2: We have a derived class
-        else if (PyType_IsSubtype(srctype, typeinfo->type)) {
-            auto &bases = all_type_info(srctype);
-            bool no_cpp_mi = typeinfo->simple_type;
-
-            // Case 2a: the python type is a Python-inherited derived class that inherits from just
-            // one simple (no MI) pybind11 class, or is an exact match, so the C++ instance is of
-            // the right type and we can use reinterpret_cast.
-            // (This is essentially the same as case 2b, but because not using multiple inheritance
-            // is extremely common, we handle it specially to avoid the loop iterator and type
-            // pointer lookup overhead)
-            if (bases.size() == 1 && (no_cpp_mi || bases.front()->type == typeinfo->type)) {
+        const bases_t* bases = nullptr;
+        base_ptr_t base_py_multi = nullptr;
+        LoadType load_type = determine_load_type(src, typeinfo, &bases, &base_py_multi);
+        switch (load_type) {
+            case LoadType::PureCpp: {
                 this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(),
-                                 LoadType::DerivedCppSinglePySingle);
+                                 load_type);
                 return true;
             }
-            // Case 2b: the python type inherits from multiple C++ bases.  Check the bases to see if
-            // we can find an exact match (or, for a simple C++ type, an inherited match); if so, we
-            // can safely reinterpret_cast to the relevant pointer.
-            else if (bases.size() > 1) {
-                for (auto base : bases) {
-                    if (no_cpp_mi ? PyType_IsSubtype(base->type, typeinfo->type) : base->type == typeinfo->type) {
-                        this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(base),
-                                         LoadType::DerivedCppSinglePyMulti);
-                        return true;
-                    }
-                }
-            }
-
-            // Case 2c: C++ multiple inheritance is involved and we couldn't find an exact type match
-            // in the registered bases, above, so try implicit casting (needed for proper C++ casting
-            // when MI is involved).
-            if (this_.try_implicit_casts(src, convert))
+            case LoadType::DerivedCppSinglePySingle: {
+                this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(),
+                                 load_type);
                 return true;
+            }
+            case LoadType::DerivedCppSinglePyMulti: {
+                this_.load_value(reinterpret_cast<instance *>(src.ptr())->get_value_and_holder(base_py_multi),
+                                 load_type);
+                return true;
+            }
+            case LoadType::DerivedCppMulti: {
+                if (this_.try_implicit_casts(src, convert))
+                    return true;
+            }
         }
 
-        // Perform an implicit conversion
+        // If nothing else succeeds, perform an implicit conversion
         if (convert) {
             for (auto &converter : typeinfo->implicit_conversions) {
                 auto temp = reinterpret_steal<object>(converter(src.ptr(), typeinfo->type));
@@ -1552,7 +1584,7 @@ protected:
     }
 
     bool load_value(value_and_holder &&v_h, LoadType load_type) {
-        if (!v_h.holder_constructed()) {
+        if (!v_h.holder_constructed() || !v_h.inst->owned) {
             throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
                                  "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
         }
