@@ -573,10 +573,11 @@ public:
                     if (policy == return_value_policy::automatic || policy == return_value_policy::take_ownership) {
                         // If this object has already been registered, but we wish to take ownership of it,
                         // then use the `has_cpp_release` mechanisms to reclaim ownership.
+                        // @note This should be the sole occurrence of this registered object when releasing back.
+                        // @note This code path should not be invoked for pure C++
                         instance* inst = it_i->second;
-                        value_and_holder v_h = inst->get_value_and_holder();
-                        if (!tinfo->has_cpp_release) {
-                            throw std::runtime_error("Unable to handle reclaiming from C++");
+                        if (!inst->reclaim_from_cpp) {
+                            throw std::runtime_error("Instance is registered but does not have a registered reclaim method. Internal error?");
                         }
                         return tinfo->reclaim_from_cpp(inst, const_cast<void*>(existing_holder)).release();
                     } else {

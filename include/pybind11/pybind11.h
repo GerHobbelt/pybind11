@@ -912,12 +912,9 @@ protected:
         tinfo->default_holder = rec.default_holder;
         tinfo->module_local = rec.module_local;
 
-        tinfo->has_cpp_release = rec.has_cpp_release;
+        tinfo->can_derive_from_trampoline = rec.can_derive_from_trampoline;
         tinfo->release_to_cpp = rec.release_to_cpp;
         tinfo->reclaim_from_cpp = rec.reclaim_from_cpp;
-        if (tinfo->has_cpp_release) {
-            assert(tinfo->release_to_cpp && tinfo->reclaim_from_cpp);
-        }
 
         auto &internals = get_internals();
         auto tindex = std::type_index(*rec.type);
@@ -1145,31 +1142,45 @@ public:
     }
 
     static object reclaim_from_cpp(detail::instance* inst, void* external_holder_raw) {
+        using detail::LoadType;
         auto v_h = inst->get_value_and_holder();
         if (inst->owned || v_h.holder_constructed()) {
             throw std::runtime_error("Derived Python object should live in C++");
         }
+        // Is this valid?
+        handle h(static_cast<PyObject*>(inst));
+        LoadType load_type = determine_load_type(h, v_h.type);
         {
-            // TODO: Use `init_holder_from_existing`
+            // TODO(eric.cousineau): Consider releasing a raw pointer, to make it easier for
+            // interop with purely raw pointers.
             holder_type& holder = v_h.holder<holder_type>();
             holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
             new (&holder) holder_type(std::move(external_holder));
             v_h.set_holder_constructed(true);
+
+            // Show that it is not yet reclaimed.
+            inst->reclaim_from_cpp = nullptr;
         }
-        {
-            auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-            auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
-            if (tr == nullptr) {
-                // This shouldn't happen here...
-                throw std::runtime_error("Bad mojo - could not upcast");
+        switch (load_type) {
+            case LoadType::PureCpp: {
+                throw std::runtime_error("reclaim_from_cpp should not be required for a pure C++ object. Internal error?");
             }
-            // Return newly created object.
-            object obj = tr->release_cpp_lifetime();
-            assert(obj.ref_count() == 1);
-
-            inst->owned = true;
-
-            return obj;
+            case LoadType::DerivedCppSinglePySingle: {
+                auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
+                auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                if (tr == nullptr) {
+                    // This shouldn't happen here...
+                    throw std::runtime_error("Bad mojo - could not upcast");
+                }
+                // Return newly created object.
+                object obj = tr->release_cpp_lifetime();
+                assert(obj.ref_count() == 1);
+                inst->owned = true;
+                return obj;
+            }
+            default: {
+                throw std::runtime_error("Unsupported load type");
+            }
         }
     }
 

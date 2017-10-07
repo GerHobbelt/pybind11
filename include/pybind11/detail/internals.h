@@ -109,11 +109,12 @@ struct type_info {
     /* true if this is a type registered with py::module_local */
     bool module_local : 1;
 
+    bool has_cpp_release = false;
+    void (*release_to_cpp)(instance* inst, void* external_holder, object&& obj) = nullptr;
     // For classes wrapped in `trampoline<>`. See `move_only_holder_caster` for more info.
     // Pure / direct C++ objects do not need any fancy releasing mechanisms. They are simply
     // unwrapped and passed back.
-    bool has_cpp_release = false;
-    void (*release_to_cpp)(instance* inst, void* external_holder, object&& obj) = nullptr;
+    bool can_derive_from_trampoline = false;
     object (*reclaim_from_cpp)(instance* inst, void* external_holder) = nullptr;
 };
 
