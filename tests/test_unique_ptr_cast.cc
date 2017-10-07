@@ -85,6 +85,7 @@ void custom_init_move(py::module& m) {
 }
 
 void check_pure_cpp() {
+  cout << "\n[ check_pure_cpp ]\n";
   py::exec(R"(
 def create_obj():
     return move.Test(10)
@@ -94,6 +95,7 @@ print(obj.value())
 }
 
 void check_py_child() {
+  cout << "\n[ check_py_child ]\n";
   py::exec(R"(
 class Child(move.Test):
     def __init__(self, value):
@@ -120,7 +122,7 @@ int main() {
     custom_init_move(m);
     py::globals()["move"] = m;
 
-//    check_pure_cpp();  // Currently broken.
+    check_pure_cpp();
     check_py_child();
   }
 

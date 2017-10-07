@@ -1591,10 +1591,11 @@ protected:
                     //@see class_::dealloc().
                     v_h_holder.~holder_type();
                     v_h.set_holder_constructed(false);
+
+                    v_h.inst->owned = false;
                 }
 
                 // This should cause the instance to de-register.
-                // TODO(eric.cousineau): Consider destructing obj_exclusive???
                 obj_exclusive = none();
                 break;
             }

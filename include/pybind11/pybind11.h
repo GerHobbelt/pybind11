@@ -1096,6 +1096,8 @@ public:
                       holder.~holder_type();
                       v_h.set_holder_constructed(false);
                   }
+                  // TODO: Replace with `inst->owned`.
+                  // NOTE: Actually, this may still need to be here...
                   inst->py_derived_lives_in_cpp = true;
                 };
                 record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
