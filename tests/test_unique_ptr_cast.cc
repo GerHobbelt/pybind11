@@ -49,9 +49,17 @@ class PyTest : public py::trampoline<Test> {
 };
 
 unique_ptr<Test> check_creation(py::function create_obj) {
-  py::object obj = create_obj();
   // Test getting a pointer.
 //  Test* in_test = py::cast<Test*>(obj);
+
+  // Test a terminal pointer.
+  cout << "---\n";
+  unique_ptr<Test> fin = py::cast<unique_ptr<Test>>(create_obj());
+  fin.reset();
+  cout << "---\n";
+
+  // Test pass-through.
+  py::object obj = create_obj();
   unique_ptr<Test> in = py::cast<unique_ptr<Test>>(std::move(obj));
   return in;
 }

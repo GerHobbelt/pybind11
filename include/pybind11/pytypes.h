@@ -1310,7 +1310,7 @@ class trampoline : public Base {
 
   using Base::Base;
 
-  ~trampoline() {
+    virtual ~trampoline() {
       if (patient_) {
           // Ensure that we still are the unique one.
           check("being destructed");
