@@ -43,6 +43,10 @@ class PyTest : public py::trampoline<Test> {
   typedef py::trampoline<Test> Base;
   using Base::Base;
 
+  ~PyTest() {
+    cout << "PyTest::~PyTest()" << endl;
+  }
+
   int value() const override {
     PYBIND11_OVERLOAD(int, Test, value);
   }

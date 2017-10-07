@@ -13,6 +13,7 @@
 #include "buffer_info.h"
 #include <utility>
 #include <type_traits>
+#include <iostream>
 
 NAMESPACE_BEGIN(PYBIND11_NAMESPACE)
 
@@ -1311,6 +1312,7 @@ class trampoline : public Base {
   using Base::Base;
 
     virtual ~trampoline() {
+      std::cout << "trampoline::~trampoline" << std::endl;
       if (patient_) {
           // Ensure that we still are the unique one.
           check("being destructed");
