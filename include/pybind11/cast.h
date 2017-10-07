@@ -1540,24 +1540,28 @@ protected:
             throw cast_error("Unable to cast from non-held to held instance (T& to Holder<T>) "
                                  "of type '" + type_id<holder_type>() + "'' to get a unique_ptr.");
         }
-        auto& v_h_holder = v_h.holder<holder_type>();
-        if (v_h.value_ptr() != v_h_holder.get()) {
-            throw std::runtime_error("holder pointer does not equal value?");
-        }
 
         value = v_h.value_ptr();
         if (value == nullptr) {
             throw std::runtime_error("C++ init has not been called");
         }
 
-        // Finish off the holder.
-        // Transfer instance's holder to this holder.
-        holder = std::move(v_h_holder);
-        // Enforce holder destruction, turn existing object into a reference
-        // only.
-        //@see class_::dealloc().
-        v_h_holder.~holder_type();
-        v_h.set_holder_constructed(false);
+        // Narrow scope to catch any odd destructors.
+        {
+            auto& v_h_holder = v_h.holder<holder_type>();
+            if (v_h.value_ptr() != v_h_holder.get()) {
+                throw std::runtime_error("holder pointer does not equal value?");
+            }
+
+            // Finish off the holder.
+            // Transfer instance's holder to this holder.
+            holder = std::move(v_h_holder);
+            // Enforce holder destruction, turn existing object into a reference
+            // only.
+            //@see class_::dealloc().
+            v_h_holder.~holder_type();
+            v_h.set_holder_constructed(false);
+        }
 
         switch (load_type) {
             case LoadType::PureCpp:
@@ -1591,7 +1595,10 @@ protected:
 
                 // Let it take ownership.
                 // Keep instance registered.
+                handle h = obj_exclusive;
                 tr->use_cpp_lifetime(std::move(obj_exclusive));
+
+                assert(h.ref_count() == 1);
 
                 // TODO(eric.cousineau): Anything else to do???
 
@@ -1609,6 +1616,7 @@ protected:
                 throw std::runtime_error("Unsupported loading type for unique_ptr<> ownership");
             }
         }
+        return true;
     }
 
     bool try_implicit_casts(handle, bool) { return false; }
