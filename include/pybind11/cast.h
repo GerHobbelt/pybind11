@@ -1584,6 +1584,18 @@ protected:
     }
 
     bool load_value(value_and_holder &&v_h, LoadType) {
+        // TODO(eric.cousineau): This should try and find the downcast-lowest
+        // level (closest to child) `release_to_cpp` method that is derived-releasable
+        // (which derives from `trampoline<type>`).
+        // This should resolve general casting, and should also avoid alias
+        // branch issues:
+        //   Example: `Base` has trampoline `PyBase` which extends `trampoline<Base>`.
+        //   `Child` extends `Base`, has its own trampoline `PyChild`, which extends
+        //   `trampoline<Child>`.
+        //   Anything deriving from `Child` does not derive from `PyBase`, so we should
+        //   NOT try to release using `PyBase`s mechanism.
+        //   Additionally, if `Child` does not have a trampoline (for whatever reason) and is extended,
+        //   then we still can NOT use `PyBase` since it's not part of the hierachy.
         typeinfo->release_to_cpp(v_h.inst, &holder, std::move(obj_exclusive));
         return true;
     }

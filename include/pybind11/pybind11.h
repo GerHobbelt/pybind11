@@ -1102,17 +1102,25 @@ public:
         LoadType load_type = determine_load_type(obj, v_h.type);
         switch (load_type) {
             case LoadType::PureCpp: {
-                // NOTE: Given that `obj` is now exclusive, then once it goes out of scope,
+                // Given that `obj` is now exclusive, then once it goes out of scope,
                 // then the registered instance for this object should be destroyed, and this
                 // should become a pure C++ object, without any ties to `pybind11`.
+                // Also, even if this instance is of a class derived from a Base that has a
+                // trampoline-wrapper alias, we do not need to worry about not being in the correct
+                // hierarchy, since we will simply release from it.
                 break;
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
                 auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
                 if (tr == nullptr) {
-                    // This shouldn't happen here...
-                    throw std::runtime_error("Bad mojo - could not upcast");
+                    // This has been invoked at too high of a level; should use a
+                    // downcast class's `release_to_cpp` mechanism (if it supports it).
+                    throw std::runtime_error(
+                        "Attempting to release to C++ using pybind11::trampoline<> "
+                        "at too high of a level. Use a class type lower in the hierarchy, such that "
+                        "the Python-derived instance actually is part of the lineage of "
+                        "pybind11::trampoline<downcast_type>");
                 }
                 // Let the external holder take ownership, but keep instance registered.
                 handle h = obj;
