@@ -1485,6 +1485,10 @@ struct move_only_holder_caster : type_caster_base<type> {
         return type_caster_base<type>::cast_holder(ptr, &src);
     }
 
+    void take_object(object&& obj) {
+        obj_exclusive = std::move(obj);
+    }
+
   // Disable these?
   explicit operator type*() { return this->value; }
   explicit operator type&() { return *(this->value); }
@@ -1500,12 +1504,16 @@ struct move_only_holder_caster : type_caster_base<type> {
   #endif
 
     bool load(handle src, bool convert) {
+        if (!src.is(obj_exclusive)) {
+            throw std::runtime_error("May only use std::move() for unique_ptr casting");
+        }
+
         if (src.ref_count() != 1) {
             throw std::runtime_error("Non-unique reference, cannot cast to "
                                          "non-copyable holder.");
         }
-        /// TODO(eric.cousineau): Figure out better way to pass `src` to `load_value`.
-        this->src_pass = src;
+//        /// TODO(eric.cousineau): Figure out better way to pass `src` to `load_value`.
+//        this->src_pass = src;
 
         // TODO(eric.cousineau): To reduce number of references, require that a list be passed in,
         // such that the value can be set to zero.
@@ -1518,7 +1526,8 @@ struct move_only_holder_caster : type_caster_base<type> {
     static PYBIND11_DESCR name() { return type_caster_base<type>::name(); }
 
 protected:
-    handle src_pass;
+//    handle src_pass;
+    object obj_exclusive;
 
     friend class type_caster_generic;
     void check_holder_compat() {
@@ -1769,8 +1778,9 @@ std::false_type is_unique_ptr(...);
 template <typename T>
 detail::make_caster<T> load_type_is_unique_ptr(object&& obj, std::true_type) {
     detail::make_caster<T> conv;
-    conv.obj_exclusive = std::move(obj);
-    detail::load_type(conv, obj);
+    handle h = obj;
+    conv.take_object(std::move(obj));
+    detail::load_type(conv, h);
     return conv;
 }
 
