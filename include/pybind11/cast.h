@@ -1561,23 +1561,6 @@ protected:
             throw std::runtime_error("C++ init has not been called");
         }
 
-        // Narrow scope to catch any odd destructors... somehow??????
-        {
-            auto& v_h_holder = v_h.holder<holder_type>();
-            if (v_h.value_ptr() != v_h_holder.get()) {
-                throw std::runtime_error("holder pointer does not equal value?");
-            }
-
-            // Finish off the holder.
-            // Transfer instance's holder to this holder.
-            holder = std::move(v_h_holder);
-            // Enforce holder destruction, turn existing object into a reference
-            // only.
-            //@see class_::dealloc().
-            v_h_holder.~holder_type();
-            v_h.set_holder_constructed(false);
-        }
-
         switch (load_type) {
             case LoadType::PureCpp:
             {
@@ -1587,6 +1570,29 @@ protected:
 //                if (!good) {
 //                    throw std::runtime_error("Could not deregister?");
 //                }
+
+                // TODO(eric.cousineau): Consolidate this with PyDerived case?
+
+                if (typeinfo->has_cpp_release) {
+                    throw std::runtime_error("Bad setup of has_cpp_release?");
+                }
+
+                // Narrow scope to catch any odd destructors... somehow??????
+                {
+                    auto& v_h_holder = v_h.holder<holder_type>();
+                    if (v_h.value_ptr() != v_h_holder.get()) {
+                        throw std::runtime_error("holder pointer does not equal value?");
+                    }
+
+                    // Finish off the holder.
+                    // Transfer instance's holder to this holder.
+                    holder = std::move(v_h_holder);
+                    // Enforce holder destruction, turn existing object into a reference
+                    // only.
+                    //@see class_::dealloc().
+                    v_h_holder.~holder_type();
+                    v_h.set_holder_constructed(false);
+                }
 
                 // This should cause the instance to de-register.
                 // TODO(eric.cousineau): Consider destructing obj_exclusive???
@@ -1599,23 +1605,10 @@ protected:
 
                 // TODO(eric.cousineau): Move C++ lifetime extension to `struct instance` level,
                 // to permit it to be type-erased (so that you can upcast / downcast more easily).
-
-                auto* cppobj = reinterpret_cast<type*>(value);
-                auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
-                if (tr == nullptr) {
-                    throw std::runtime_error(
-                        "To give C++ owernship of a Python-derived class, you must ensure that "
-                            "the trampoline class is wrapped with pybind11::trampoline<>");
+                if (!typeinfo->has_cpp_release) {
+                    throw std::runtime_error("Need C++ release");
                 }
-
-                // Let it take ownership.
-                // Keep instance registered.
-                handle h = obj_exclusive;
-                tr->use_cpp_lifetime(std::move(obj_exclusive));
-
-                assert(h.ref_count() == 1);
-
-                // TODO(eric.cousineau): Anything else to do???
+                typeinfo->release_to_cpp(v_h.inst, &holder, std::move(obj_exclusive));
 
                 break;
             }

@@ -1072,6 +1072,9 @@ public:
                   if (!v_h.holder_constructed()) {
                       throw std::runtime_error("Should be holder constructed");
                   }
+                  if (inst->py_derived_lives_in_cpp) {
+                      throw std::runtime_error("Derived object should not already live in C++");
+                  }
                   {
                       auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
                       auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
@@ -1093,11 +1096,15 @@ public:
                       holder.~holder_type();
                       v_h.set_holder_constructed(false);
                   }
+                  inst->py_derived_lives_in_cpp = true;
                 };
                 record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
                   auto v_h = inst->get_value_and_holder();
                   if (v_h.holder_constructed()) {
                       throw std::runtime_error("Should not be holder constructed");
+                  }
+                  if (!inst->py_derived_lives_in_cpp) {
+                      throw std::runtime_error("Derived Python object should live in C++");
                   }
                   {
                       // TODO: Use `init_holder_from_existing`
@@ -1116,6 +1123,9 @@ public:
                       // Return newly created object.
                       object obj = tr->release_cpp_lifetime();
                       assert(obj.ref_count() == 1);
+
+                      inst->py_derived_lives_in_cpp = false;
+
                       return obj;
                   }
                 };
@@ -1391,7 +1401,11 @@ private:
         else {
             // TODO(eric.cousineau): See if this should be disabled if `v_h` somehow indicates
             // that the value is still living in C++.
-            detail::call_operator_delete(v_h.value_ptr<type>(), v_h.type->type_size);
+            if (v_h.inst->py_derived_lives_in_cpp) {
+                std::cout << "Py-Derived lives in C++, not destroying" << std::endl;
+            } else {
+                detail::call_operator_delete(v_h.value_ptr<type>(), v_h.type->type_size);
+            }
         }
         v_h.value_ptr() = nullptr;
     }

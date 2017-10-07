@@ -57,6 +57,9 @@ unique_ptr<Test> check_creation(py::function create_obj) {
 //  Test* in_test = py::cast<Test*>(obj);
 
   // Test a terminal pointer.
+  // NOTE: This yields a different destructor order.
+  // However, the trampoline class destructors should NOT interfere with nominal
+  // Python destruction.
   cout << "---\n";
   unique_ptr<Test> fin = py::cast<unique_ptr<Test>>(create_obj());
   fin.reset();

@@ -422,6 +422,9 @@ struct instance {
     bool simple_instance_registered : 1;
     /// If true, get_internals().patients has an entry for this object
     bool has_patients : 1;
+    /// If the instance is a Python-derived type, but is owned in C++, then class_::deallocate()
+    /// should not attempt to free memory.
+    bool py_derived_lives_in_cpp = false;
 
     /// Initializes all of the above type/values/holders data (but not the instance values themselves)
     void allocate_layout();
