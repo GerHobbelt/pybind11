@@ -1509,6 +1509,8 @@ struct move_only_holder_caster : type_caster_base<type> {
 
         // TODO(eric.cousineau): To reduce number of references, require that a list be passed in,
         // such that the value can be set to zero.
+        // That, or figure out where the `py::object` is in this call chain, and set that to zero.
+        // Specialize for unique_ptr<>?
 
         return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
     }
@@ -1753,6 +1755,34 @@ object cast(const T &value, return_value_policy policy = return_value_policy::au
 template <typename T> T handle::cast() const { return pybind11::cast<T>(*this); }
 template <> inline void handle::cast() const { return; }
 
+
+
+// TODO(eric.cousineau): Organize better later.
+
+// Allow dispatching to a different mechanism that allows the caster to have explicit control
+// over the object (for reference-count control) rather than the handle.
+
+template <typename T>
+std::true_type is_unique_ptr(const std::unique_ptr<T>&);
+std::false_type is_unique_ptr(...);
+
+template <typename T>
+detail::make_caster<T> load_type_is_unique_ptr(object&& obj, std::true_type) {
+    detail::make_caster<T> conv;
+    conv.obj_exclusive = std::move(obj);
+    detail::load_type(conv, obj);
+    return conv;
+}
+
+template <typename T>
+detail::make_caster<T> load_type_is_unique_ptr(const handle& handle, std::false_type) {
+    return detail::load_type<T>(handle);
+}
+
+
+
+
+
 template <typename T>
 detail::enable_if_t<!detail::move_never<T>::value, T> move(object &&obj) {
     if (obj.ref_count() > 1)
@@ -1765,8 +1795,11 @@ detail::enable_if_t<!detail::move_never<T>::value, T> move(object &&obj) {
 #endif
 
     // Move into a temporary and return that, because the reference may be a local value of `conv`
-    T ret = std::move(detail::load_type<T>(obj).operator T&());
-    return ret;
+    using is_unique_ptr_t = decltype(is_unique_ptr(std::declval<T>()));
+    auto conv = load_type_is_unique_ptr<T>(std::move(obj), is_unique_ptr_t{});
+    return std::move(conv.operator T&());
+//    T ret = std::move(detail::load_type<T>(obj).operator T&());
+//    return ret;
 }
 
 // Calling cast() on an rvalue calls pybind::cast with the object rvalue, which does:

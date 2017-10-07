@@ -135,7 +135,7 @@ class Child(move.Test):
         return move.Test.value(self)
 
 def create_obj():
-    return Child(20)
+    return [Child(20)]
 obj = move.check_creation(create_obj)
 print(obj.value())
 )");
