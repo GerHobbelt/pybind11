@@ -1072,8 +1072,8 @@ public:
                   if (!v_h.holder_constructed()) {
                       throw std::runtime_error("Should be holder constructed");
                   }
-                  if (inst->py_derived_lives_in_cpp) {
-                      throw std::runtime_error("Derived object should not already live in C++");
+                  if (!inst->owned) {
+                      throw std::runtime_error("Python-extended C++ object should not be owned by pybind11");
                   }
                   {
                       auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
@@ -1082,8 +1082,7 @@ public:
                           // This shouldn't happen here...
                           throw std::runtime_error("Bad mojo - could not upcast");
                       }
-                      // Let it take ownership.
-                      // Keep instance registered.
+                      // Let the external holder take ownership, but keep instance registered.
                       handle h = obj;
                       tr->use_cpp_lifetime(std::move(obj));
                       assert(h.ref_count() == 1);
@@ -1095,17 +1094,15 @@ public:
                       external_holder = std::move(holder);
                       holder.~holder_type();
                       v_h.set_holder_constructed(false);
+                      inst->owned = false;
                   }
-                  // TODO: Replace with `inst->owned`.
-                  // NOTE: Actually, this may still need to be here...
-                  inst->py_derived_lives_in_cpp = true;
                 };
                 record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
                   auto v_h = inst->get_value_and_holder();
                   if (v_h.holder_constructed()) {
                       throw std::runtime_error("Should not be holder constructed");
                   }
-                  if (!inst->py_derived_lives_in_cpp) {
+                  if (inst->owned) {
                       throw std::runtime_error("Derived Python object should live in C++");
                   }
                   {
@@ -1126,7 +1123,7 @@ public:
                       object obj = tr->release_cpp_lifetime();
                       assert(obj.ref_count() == 1);
 
-                      inst->py_derived_lives_in_cpp = false;
+                      inst->owned = true;
 
                       return obj;
                   }
@@ -1401,13 +1398,10 @@ private:
             v_h.set_holder_constructed(false);
         }
         else {
-            // TODO(eric.cousineau): See if this should be disabled if `v_h` somehow indicates
-            // that the value is still living in C++.
-            if (v_h.inst->py_derived_lives_in_cpp) {
-                std::cout << "Py-Derived lives in C++, not destroying" << std::endl;
-            } else {
-                detail::call_operator_delete(v_h.value_ptr<type>(), v_h.type->type_size);
-            }
+            // TODO(eric.cousineau): Not destructing a PureCpp or owned DerivedPySingleCppSingle
+            // is handled by setting `inst->owned` to false, bypassing this destructor.
+            // Consider reviving / making `py_owned_in_cpp` if need be.
+            detail::call_operator_delete(v_h.value_ptr<type>(), v_h.type->type_size);
         }
         v_h.value_ptr() = nullptr;
     }

@@ -515,7 +515,8 @@ public:
             for (auto instance_type : detail::all_type_info(Py_TYPE(it_i->second))) {
                 if (instance_type && same_type(*instance_type->cpptype, *tinfo->cpptype)) {
                     if (policy == return_value_policy::automatic || policy == return_value_policy::take_ownership) {
-                        // Reclaim ownership.
+                        // If this object has already been registered, but we wish to take ownership of it,
+                        // then use the `has_cpp_release` mechanisms to reclaim ownership.
                         instance* inst = it_i->second;
                         value_and_holder v_h = inst->get_value_and_holder();
                         if (v_h.holder_constructed()) {
