@@ -1069,10 +1069,7 @@ public:
             if (record.has_cpp_release) {
                 record.release_to_cpp = [](instance* inst, void* external_holder_raw, object&& obj) {
                   auto v_h = inst->get_value_and_holder();
-                  if (!v_h.holder_constructed()) {
-                      throw std::runtime_error("Should be holder constructed");
-                  }
-                  if (!inst->owned) {
+                  if (!inst->owned || !v_h.holder_constructed()) {
                       throw std::runtime_error("Python-extended C++ object should not be owned by pybind11");
                   }
                   {
@@ -1099,10 +1096,7 @@ public:
                 };
                 record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
                   auto v_h = inst->get_value_and_holder();
-                  if (v_h.holder_constructed()) {
-                      throw std::runtime_error("Should not be holder constructed");
-                  }
-                  if (inst->owned) {
+                  if (inst->owned || v_h.holder_constructed()) {
                       throw std::runtime_error("Derived Python object should live in C++");
                   }
                   {
