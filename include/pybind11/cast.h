@@ -1844,18 +1844,20 @@ std::true_type is_unique_ptr(const std::unique_ptr<T>&);
 std::false_type is_unique_ptr(...);
 
 template <typename T>
-detail::make_caster<T> load_type_is_unique_ptr(object&& obj, std::true_type) {
-    detail::make_caster<T> conv;
-    handle h = obj;
+void do_prepare_caster(detail::make_caster<T>& conv, object&& obj, std::true_type) {
     conv.take_object(std::move(obj));
-    detail::load_type(conv, h);
-    return conv;
 }
 
 template <typename T>
-detail::make_caster<T> load_type_is_unique_ptr(const handle& handle, std::false_type) {
-    return detail::load_type<T>(handle);
+void do_prepare_caster(detail::make_caster<T>& conv, handle h, std::true_type) {
+    std::cout << "Stealing reference!" << std::endl;
+    object obj = reinterpret_steal<object>(h);
+    // Caster (move_only_holder_caster) will check that this is a unique reference.
+    do_prepare_caster<T>(conv, std::move(obj), std::true_type{});
 }
+
+template <typename T>
+void do_prepare_caster(detail::make_caster<T>& conv, handle h, std::false_type) {}
 
 
 
@@ -1873,8 +1875,14 @@ detail::enable_if_t<!detail::move_never<T>::value, T> move(object &&obj) {
 #endif
 
     // Move into a temporary and return that, because the reference may be a local value of `conv`
+    detail::make_caster<T> conv;
+    handle h = obj;
+    // If we have a unique ptr,
     using is_unique_ptr_t = decltype(is_unique_ptr(std::declval<T>()));
-    auto conv = load_type_is_unique_ptr<T>(std::move(obj), is_unique_ptr_t{});
+    do_prepare_caster<T>(conv, std::move(obj), is_unique_ptr_t{});
+    // Load up the type.
+    detail::load_type<T>(conv, h);
+    // Convert to desired type.
     return std::move(conv.operator T&());
 //    T ret = std::move(detail::load_type<T>(obj).operator T&());
 //    return ret;
@@ -2058,6 +2066,8 @@ struct function_call {
 
 template <typename T>
 bool do_caster_load(make_caster<T>& caster, handle arg, bool convert) {
+    using is_unique_ptr_t = decltype(is_unique_ptr(std::declval<T>()));
+    do_prepare_caster<T>(caster, arg, is_unique_ptr_t{});
     return caster.load(arg, convert);
 }
 
