@@ -138,12 +138,23 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
   return in;
 }
 
+// TODO(eric.cousineau): If a user uses `object` as a pass in, it should keep the reference count low
+// (so that we can steal it, if need be).
+// Presently, `pybind11` increases that reference count if `object` is an argument.
+
 // Check casting.
 unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) {
 //  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
   cout << "Pass through" << endl;
   cout << in->value()<< endl;
   return in;
+}
+
+unique_ptr<Base> check_clone(unique_ptr<Base> in) {
+//  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
+  cout << "Clone: " << in->value()<< endl;
+  unique_ptr<Base> out(new Base(20 * in->value()));
+  return out;
 }
 
 PYBIND11_MODULE(_move, m) {
@@ -162,6 +173,7 @@ PYBIND11_MODULE(_move, m) {
 
   m.def("check_creation", &check_creation);
   m.def("check_cast_pass_thru", &check_cast_pass_thru);
+  m.def("check_clone", &check_clone);
 
   // Make sure this setup doesn't botch the usage of `shared_ptr`, compile or run-time.
   class SharedClass {};
@@ -237,7 +249,8 @@ del obj
 void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
     py::exec(R"(
-move.check_cast_pass_thru(move.Base(10))
+print(move.check_cast_pass_thru(move.Base(10)).value())
+# print(move.check_clone(move.Base(20)).value())
 )");
 }
 

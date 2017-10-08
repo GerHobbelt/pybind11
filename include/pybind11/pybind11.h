@@ -1207,8 +1207,8 @@ public:
                 // This should generally not be called.
                 // However, in a direct pass-through case (which should be rare), the Python reference
                 // may stay alive before returning, in which case we do nothing, and just pass the
-                // (borrowed) existing reference.
-                return reinterpret_borrow<object>(h);
+                // (stolen) existing reference.
+                return reinterpret_steal<object>(h);
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
