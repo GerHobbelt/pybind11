@@ -139,7 +139,8 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
 }
 
 // Check casting.
-unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) {
+unique_ptr<Base> check_cast_pass_thru(py::object py_in) { // unique_ptr<Base> in) {
+  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
   cout << "Pass through" << endl;
   cout << in->value()<< endl;
   return in;

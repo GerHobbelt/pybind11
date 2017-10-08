@@ -2098,6 +2098,8 @@ private:
 
     template <size_t... Is>
     bool load_impl_sequence(function_call &call, index_sequence<Is...>) {
+        // TODO(eric.cousineau): Based on the argcaster, need to ensure we can pass `take_ownership`.
+        // But the argument - how do we still `obj` from the argument???
         for (bool r : {std::get<Is>(argcasters).load(call.args[Is], call.args_convert[Is])...})
             if (!r)
                 return false;
