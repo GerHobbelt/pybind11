@@ -7,7 +7,15 @@ cc_binary(
         "//python:pybind11_include",
     ],
 )
-
+cc_binary(
+    name = "test_ref_count",
+    srcs = [
+        "test_ref_count.cc",
+    ],
+    deps = [
+        "//python:pybind11_include",
+    ],
+)
 cc_library(
     name = "base",
     srcs = [
