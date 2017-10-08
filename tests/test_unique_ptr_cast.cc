@@ -130,6 +130,10 @@ PYBIND11_MODULE(_move, m) {
       .def(py::init<int>())
       .def("value", &ChildB::value);
 
+  // Make sure this setup doesn't botch the usage of `shared_ptr`, compile or run-time.
+  class Meh {};
+  py::class_<Meh, shared_ptr<Meh>>(m, "Meh");
+
   m.def("check_creation", &check_creation);
 
   auto mdict = m.attr("__dict__");

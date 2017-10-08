@@ -1088,6 +1088,22 @@ public:
         return detail::get_type_info(id);
     }
 
+  template <typename = void>
+  struct get_trampoline_impl {
+    static trampoline<type>* run(type* value, std::true_type) {
+        return dynamic_cast<trampoline<type>*>(value);
+    }
+    static trampoline<type>* run(type* value, std::false_type) {
+        return nullptr;
+    }
+  };
+
+    // Private constructors will wreak havoc...
+    static trampoline<type>* get_trampoline(type* value) {
+        using value_t = typename std::is_polymorphic<type>::type;
+        return get_trampoline_impl<>::run(value, value_t{});
+    }
+
     static void release_to_cpp(detail::instance* inst, void* external_holder_raw, object&& obj) {
         using detail::LoadType;
         auto v_h = inst->get_value_and_holder();
@@ -1115,7 +1131,7 @@ public:
                         "pybind11::trampoline<>.");
                 }
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                auto* tr = get_trampoline(cppobj);
                 if (tr == nullptr) {
                     // This has been invoked at too high of a level; should use a
                     // downcast class's `release_to_cpp` mechanism (if it supports it).
@@ -1177,7 +1193,7 @@ public:
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+                auto* tr = get_trampoline(cppobj);
                 if (tr == nullptr) {
                     // This shouldn't happen here...
                     throw std::runtime_error("Internal error?");
