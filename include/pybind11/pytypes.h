@@ -1339,9 +1339,27 @@ class trampoline : public Base {
   }
 
  protected:
-  /// Call this if, for whatever reason, your C++ trampoline class `Base` has a non-trivial
-  /// destructor that needs to keep information available to the Python-extended class.
-  // TODO(eric.cousineau): Verify this with an example workflow.
+    /// Call this if, for whatever reason, your C++ trampoline class `Base` has a non-trivial
+    /// destructor that needs to keep information available to the Python-extended class.
+    /// In this case, you want to delete the Python object *before* you do any work in your trampoline class.
+    ///
+    /// As an example, say you have `Base`, and `PyBase` is your trampoline class which extends `trampoline<Base>`.
+    /// By default, if the instance is owned in C++ and deleted, then the destructor order will be:
+    ///    ~PyBase()
+    ///       do_stuff()
+    ///    ~trampoline<Base>()
+    ///       delete_py_if_in_cpp()
+    ///           PyChild.__del__ - ERROR: Should have been called before `do_stuff()
+    ///    ~Base()
+    /// If you explicitly call `delete_py_if_in_cpp()`, then you will get the desired order:
+    ///    ~PyBase()
+    ///       delete_py_if_in_cpp()
+    ///           PyChild.__del__ - GOOD: Workzzz. Called before `do_stuff()`.
+    ///       do_stuff()
+    ///    ~trampoline<Base>()
+    ///       delete_py_if_in_cpp() - No-op. Python object has been released.
+    ///    ~Base()
+    // TODO(eric.cousineau): Verify this with an example workflow.
   void delete_py_if_in_cpp() {
       if (lives_in_cpp()) {
           std::cout << "trampoline: releasing C++ owned Python object" << std::endl;
