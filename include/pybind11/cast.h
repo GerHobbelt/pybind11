@@ -1597,7 +1597,7 @@ protected:
             throw cast_error("No release_to_cpp method. Internal error?");
     }
 
-    bool load_value(value_and_holder &&v_h, LoadType) {
+    bool load_value(value_and_holder &&v_h, LoadType load_type) {
         // TODO(eric.cousineau): This should try and find the downcast-lowest
         // level (closest to child) `release_to_cpp` method that is derived-releasable
         // (which derives from `trampoline<type>`).
@@ -1610,7 +1610,37 @@ protected:
         //   NOT try to release using `PyBase`s mechanism.
         //   Additionally, if `Child` does not have a trampoline (for whatever reason) and is extended,
         //   then we still can NOT use `PyBase` since it's not part of the hierachy.
-        typeinfo->release_info.release_to_cpp(v_h.inst, &holder, std::move(obj_exclusive));
+
+        // Try to get the lowest-hierarchy level of the type.
+        // This requires that we are single-inheritance at most.
+        const detail::type_info* lowest_type = nullptr;
+        switch (load_type) {
+            case LoadType::PureCpp: {
+                // We already have the lowest type.
+                lowest_type = typeinfo;
+                break;
+            }
+            // If the base type is explicitly mentioned, then we can rely on `DerivedCppSinglePySingle` being used.
+            // This may be that we have a C++ type inheriting from another C++ type. In this case, we delegate.
+            // Otherwise, we should try dynamically downcast (via Python) to find the appropriate release mechanism.
+            case LoadType::DerivedCppSinglePySingle:
+            case LoadType::ConversionNeeded: {
+                // Try to get the lowest-hierarchy (closets to child class) of the type.
+                // The usage of `get_type_info` implicitly requires single inheritance.
+                auto* py_type = (PyTypeObject*)obj_exclusive.get_type().ptr();
+                lowest_type = detail::get_type_info(py_type);
+                break;
+            }
+            default: {
+                throw std::runtime_error("Unsupported load type");
+            }
+        }
+        if (!lowest_type)
+            throw std::runtime_error("No valid lowest type. Internal error?");
+        auto& release_info = lowest_type->release_info;
+        if (!release_info.release_to_cpp)
+            throw std::runtime_error("No release mechanism in lowest type?");
+        release_info.release_to_cpp(v_h.inst, &holder, std::move(obj_exclusive));
         return true;
     }
 
