@@ -2056,6 +2056,12 @@ struct function_call {
 };
 
 
+template <typename T>
+bool do_caster_load(make_caster<T>& caster, handle arg, bool convert) {
+    return caster.load(arg, convert);
+}
+
+
 /// Helper class which loads arguments for C++ functions called from Python
 template <typename... Args>
 class argument_loader {
@@ -2100,7 +2106,8 @@ private:
     bool load_impl_sequence(function_call &call, index_sequence<Is...>) {
         // TODO(eric.cousineau): Based on the argcaster, need to ensure we can pass `take_ownership`.
         // But the argument - how do we still `obj` from the argument???
-        for (bool r : {std::get<Is>(argcasters).load(call.args[Is], call.args_convert[Is])...})
+//        for (bool r : {std::get<Is>(argcasters).load(call.args[Is], call.args_convert[Is])...})
+        for (bool r : {do_caster_load<Args>(std::get<Is>(argcasters), call.args[Is], call.args_convert[Is])...})
             if (!r)
                 return false;
         return true;
