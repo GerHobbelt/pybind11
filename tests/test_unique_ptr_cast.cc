@@ -231,8 +231,13 @@ def create_obj():
 obj = move.check_creation(create_obj)
 print(obj.value())
 del obj
+)");
+}
 
-move.check_cast_pass_thru(create_obj())
+void check_pass_thru() {
+    cout << "\n[ check_pure_cpp ]\n";
+    py::exec(R"(
+move.check_cast_pass_thru(move.Base(10))
 )");
 }
 
@@ -280,11 +285,12 @@ int main() {
     custom_init_move(m);
     py::globals()["move"] = m;
 
-    check_pure_cpp_simple();
-    check_pure_cpp();
-    check_py_child();
-    check_casting();
-    check_casting_without_explicit_base();
+    check_pass_thru();
+//    check_pure_cpp_simple();
+//    check_pure_cpp();
+//    check_py_child();
+//    check_casting();
+//    check_casting_without_explicit_base();
   }
 
   cout << "[ Done ]" << endl;

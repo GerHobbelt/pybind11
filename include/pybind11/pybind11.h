@@ -1204,9 +1204,11 @@ public:
         }
         switch (load_type) {
             case LoadType::PureCpp: {
-                throw std::runtime_error(
-                    "reclaim_from_cpp should not be required for a pure C++ object. "
-                    "Internal error (instance still registered)?");
+                // This should generally not be called.
+                // However, in a direct pass-through case (which should be rare), the Python reference
+                // may stay alive before returning, in which case we do nothing, and just pass the
+                // (borrowed) existing reference.
+                return reinterpret_borrow<object>(h);
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
