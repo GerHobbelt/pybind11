@@ -77,6 +77,19 @@ PYBIND11_MODULE(_move, m) {
     .def("value", &Test::value);
 
   m.def("check_creation", &check_creation);
+
+  auto mdict = m.attr("__dict__");
+  py::exec(R"(
+class PyExtTest(Test):
+    def __init__(self, value):
+        Test.__init__(self, value)
+        print("PyExtTest.PyExtTest")
+    def __del__(self):
+        print("PyExtTest.__del__")
+    def value(self):
+        print("PyExtTest.value")
+        return Test.value(self)
+)", mdict, mdict);
 }
 
 // Export this to get access as we desire.
@@ -97,18 +110,8 @@ print(obj.value())
 void check_py_child() {
   cout << "\n[ check_py_child ]\n";
   py::exec(R"(
-class Child(move.Test):
-    def __init__(self, value):
-        move.Test.__init__(self, value)
-        print("py.Child.Child")
-    def __del__(self):
-        print("py.Child.__del__")
-    def value(self):
-        print("py.Child.value")
-        return move.Test.value(self)
-
 def create_obj():
-    return Child(20)
+    return move.PyExtTest(20)
 obj = move.check_creation(create_obj)
 print(obj.value())
 )");
