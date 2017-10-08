@@ -7,3 +7,25 @@ cc_binary(
         "//python:pybind11_include",
     ],
 )
+
+cc_library(
+    name = "base",
+    srcs = [
+        "constructor_stats.h",
+        "pybind11_tests.h",
+        "pybind11_tests.cpp",
+    ],
+    deps = [
+        "//python:pybind11_include",
+    ],
+)
+
+cc_binary(
+    name = "test_copy_move",
+    srcs = [
+        "test_copy_move.cpp",
+    ],
+    deps = [
+        ":base",
+    ],
+)
