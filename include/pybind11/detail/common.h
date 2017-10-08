@@ -426,8 +426,7 @@ struct instance {
     bool has_patients : 1;
     /// If the instance is a Python-derived type that is owned in C++, then this method
     /// will permit the instance to be reclaimed back by Python.
-    // TODO(eric.cousineau): This may not be necessary, if there is a consistent way
-    // to query the correct type that is in the correct lineage.
+    // TODO(eric.cousineau): This may not be necessary. See note in `type_caster_generic::cast`.
     object (*reclaim_from_cpp)(instance* inst, void* external_holder) = nullptr;
 
     /// Initializes all of the above type/values/holders data (but not the instance values themselves)

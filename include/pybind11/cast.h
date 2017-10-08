@@ -579,6 +579,8 @@ public:
                         // then use the `has_cpp_release` mechanisms to reclaim ownership.
                         // @note This should be the sole occurrence of this registered object when releasing back.
                         // @note This code path should not be invoked for pure C++
+                        // TODO(eric.cousineau): This field may not be necessary if the lowest-level type is valid.
+                        // See `move_only_holder_caster::load_value`.
                         instance* inst = it_i->second;
                         if (!inst->reclaim_from_cpp) {
                             throw std::runtime_error("Instance is registered but does not have a registered reclaim method. Internal error?");
@@ -1579,6 +1581,7 @@ struct move_only_holder_caster : type_caster_base<type> {
         // Do not use `load_impl`, as it's not structured conveniently for `unique_ptr`.
         // Specifically, trying to delegate to resolving to conversion.
         // return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
+        check_holder_compat();
         auto v_h = reinterpret_cast<instance *>(src.ptr())->get_value_and_holder();
         LoadType load_type = determine_load_type(src, typeinfo);
         return load_value(std::move(v_h), load_type);
@@ -1597,8 +1600,6 @@ protected:
     void check_holder_compat() {
         if (!typeinfo->default_holder)
             throw cast_error("Unable to load a non-default holder type (unique_ptr)");
-        if (!typeinfo->release_info.release_to_cpp)
-            throw cast_error("No release_to_cpp method. Internal error?");
     }
 
     bool load_value(value_and_holder &&v_h, LoadType load_type) {
@@ -1648,34 +1649,34 @@ protected:
         return true;
     }
 
-    template <typename T = holder_type>
-    bool try_implicit_casts(handle src, bool convert) {
-        return false;
-    }
-
-    bool try_direct_conversions(handle src) {
-        // Attempt for upcasting.
-        // TODO(eric.cousineau): Determine if there is a way to prevent copies from being generated?
-        // direct_conversions?
-        const bool convert = true;  // For use with `load_impl`.
-        for (auto &cast : typeinfo->implicit_casts) {
-            move_only_holder_caster sub_caster(*cast.first);
-            // Tentatively surrender access to `obj_exclusive`.
-            sub_caster.take_object(release_object());
-            if (sub_caster.load(src, convert)) {
-                value = cast.second(sub_caster.value);
-                holder.reset(dynamic_cast<type*>(sub_caster.holder.release()));
-                if (holder == nullptr) {
-                    throw std::runtime_error("Internal error");
-                }
-                return true;
-            } else {
-                // Give me back my object!
-                take_object(sub_caster.release_object());
-            }
-        }
-        return false;
-    }
+//    template <typename T = holder_type>
+//    bool try_implicit_casts(handle src, bool convert) {
+//        return false;
+//    }
+//
+//    bool try_direct_conversions(handle src) {
+//        // Attempt for upcasting.
+//        // TODO(eric.cousineau): Determine if there is a way to prevent copies from being generated?
+//        // direct_conversions?
+//        const bool convert = true;  // For use with `load_impl`.
+//        for (auto &cast : typeinfo->implicit_casts) {
+//            move_only_holder_caster sub_caster(*cast.first);
+//            // Tentatively surrender access to `obj_exclusive`.
+//            sub_caster.take_object(release_object());
+//            if (sub_caster.load(src, convert)) {
+//                value = cast.second(sub_caster.value);
+//                holder.reset(dynamic_cast<type*>(sub_caster.holder.release()));
+//                if (holder == nullptr) {
+//                    throw std::runtime_error("Internal error");
+//                }
+//                return true;
+//            } else {
+//                // Give me back my object!
+//                take_object(sub_caster.release_object());
+//            }
+//        }
+//        return false;
+//    }
 
     holder_type holder;
 };
