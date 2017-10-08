@@ -1306,13 +1306,13 @@ inline iterator iter(handle obj) {
 /// this data.
 template <typename Base>
 class trampoline : public Base {
- public:
-  using Base::Base;
+ protected:
+    using Base::Base;
 
+ public:
   // TODO(eric.cousineau): Complain if this is not virtual? (and remove `virtual` specifier in dtor?)
 
   virtual ~trampoline() {
-      std::cout << "trampoline::~trampoline" << std::endl;
       delete_py_if_in_cpp();
   }
 
@@ -1362,7 +1362,6 @@ class trampoline : public Base {
     // TODO(eric.cousineau): Verify this with an example workflow.
   void delete_py_if_in_cpp() {
       if (lives_in_cpp()) {
-          std::cout << "trampoline: releasing C++ owned Python object" << std::endl;
           // Ensure that we still are the unique one, such that the Python classes
           // destructor will be called.
           check("being destructed");
