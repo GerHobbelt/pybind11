@@ -486,8 +486,8 @@ enum class LoadType {
   DerivedCppMulti
 };
 
-typedef decltype(all_type_info(nullptr)) bases_t;
 typedef type_info* base_ptr_t;
+typedef const std::vector<base_ptr_t> bases_t;
 
 LoadType determine_load_type(handle src, const type_info* typeinfo,
                              const bases_t** out_bases = nullptr,
@@ -503,6 +503,8 @@ LoadType determine_load_type(handle src, const type_info* typeinfo,
     // Case 1: If src is an exact type match for the target type then we can reinterpret_cast
     // the instance's value pointer to the target type:
     if (srctype == typeinfo->type) {
+        // TODO(eric.cousineau): Determine if the type is upcast from a type, which is
+        // still a pure C++ object?
         return LoadType::PureCpp;
     }
     // Case 2: We have a derived class
@@ -579,7 +581,7 @@ public:
                         if (!inst->reclaim_from_cpp) {
                             throw std::runtime_error("Instance is registered but does not have a registered reclaim method. Internal error?");
                         }
-                        return tinfo->reclaim_from_cpp(inst, const_cast<void*>(existing_holder)).release();
+                        return inst->reclaim_from_cpp(inst, const_cast<void*>(existing_holder)).release();
                     } else {
                         return handle((PyObject *) it_i->second).inc_ref();
                     }
@@ -1582,6 +1584,8 @@ protected:
     void check_holder_compat() {
         if (!typeinfo->default_holder)
             throw cast_error("Unable to load a non-default holder type (unique_ptr)");
+        if (!typeinfo->release_info.release_to_cpp)
+            throw cast_error("No release_to_cpp method. Internal error?");
     }
 
     bool load_value(value_and_holder &&v_h, LoadType) {
@@ -1597,7 +1601,7 @@ protected:
         //   NOT try to release using `PyBase`s mechanism.
         //   Additionally, if `Child` does not have a trampoline (for whatever reason) and is extended,
         //   then we still can NOT use `PyBase` since it's not part of the hierachy.
-        typeinfo->release_to_cpp(v_h.inst, &holder, std::move(obj_exclusive));
+        typeinfo->release_info.release_to_cpp(v_h.inst, &holder, std::move(obj_exclusive));
         return true;
     }
 

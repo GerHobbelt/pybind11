@@ -912,9 +912,7 @@ protected:
         tinfo->default_holder = rec.default_holder;
         tinfo->module_local = rec.module_local;
 
-        tinfo->can_derive_from_trampoline = rec.can_derive_from_trampoline;
-        tinfo->release_to_cpp = rec.release_to_cpp;
-        tinfo->reclaim_from_cpp = rec.reclaim_from_cpp;
+        tinfo->release_info = rec.release_info;
 
         auto &internals = get_internals();
         auto tindex = std::type_index(*rec.type);
@@ -1064,14 +1062,9 @@ public:
         record.default_holder = std::is_same<holder_type, std::unique_ptr<type>>::value;
         if (record.default_holder) {
             // TODO(eric.cousineau): Determine how to permit releasing without a trampoline...
-            record.has_cpp_release = false;
-            throw std::runtime_error("Fix");
-            if (record.has_cpp_release) {
-                record.release_to_cpp = release_to_cpp;
-                record.reclaim_from_cpp = [](instance* inst, void* external_holder_raw) -> object {
-
-                };
-            };
+            auto& release_info = record.release_info;
+            release_info.can_derive_from_trampoline = has_trampoline;
+            release_info.release_to_cpp = release_to_cpp;
         }
 
         set_operator_new<type>(&record);
@@ -1090,13 +1083,19 @@ public:
         }
     }
 
+    static detail::type_info* get_type_info() {
+        std::type_index id(typeid(type));
+        return detail::get_type_info(id);
+    }
+
     static void release_to_cpp(detail::instance* inst, void* external_holder_raw, object&& obj) {
         using detail::LoadType;
         auto v_h = inst->get_value_and_holder();
+        auto* tinfo = get_type_info();
         if (!inst->owned || !v_h.holder_constructed()) {
             throw std::runtime_error("Python-extended C++ object should not be owned by pybind11");
         }
-        LoadType load_type = determine_load_type(obj, v_h.type);
+        LoadType load_type = determine_load_type(obj, tinfo);
         switch (load_type) {
             case LoadType::PureCpp: {
                 // Given that `obj` is now exclusive, then once it goes out of scope,
@@ -1108,6 +1107,13 @@ public:
                 break;
             }
             case LoadType::DerivedCppSinglePySingle: {
+                if (!tinfo->release_info.can_derive_from_trampoline) {
+                    throw std::runtime_error(
+                        "Python-extended C++ class does not inherit from pybind11::trampoline<>, "
+                        "so lifetime cannot be attached to a C++ representation of the objection. "
+                        "To fix this, ensure registered type has an alias which extends "
+                        "pybind11::trampoline<>.");
+                }
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
                 auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
                 if (tr == nullptr) {
@@ -1123,6 +1129,7 @@ public:
                 handle h = obj;
                 tr->use_cpp_lifetime(std::move(obj));
                 assert(h.ref_count() == 1);
+                break;
             }
             default: {
                 throw std::runtime_error("Unsupported load type (multiple inheritance)");
@@ -1144,33 +1151,36 @@ public:
     static object reclaim_from_cpp(detail::instance* inst, void* external_holder_raw) {
         using detail::LoadType;
         auto v_h = inst->get_value_and_holder();
+        auto* tinfo = get_type_info();
         if (inst->owned || v_h.holder_constructed()) {
             throw std::runtime_error("Derived Python object should live in C++");
         }
         // Is this valid?
-        handle h(static_cast<PyObject*>(inst));
-        LoadType load_type = determine_load_type(h, v_h.type);
+        handle h(reinterpret_cast<PyObject*>(inst));
+        LoadType load_type = determine_load_type(h, tinfo);
         {
             // TODO(eric.cousineau): Consider releasing a raw pointer, to make it easier for
-            // interop with purely raw pointers.
+            // interop with purely raw pointers? Nah, just rely on release.
             holder_type& holder = v_h.holder<holder_type>();
             holder_type& external_holder = *reinterpret_cast<holder_type*&>(external_holder_raw);
             new (&holder) holder_type(std::move(external_holder));
             v_h.set_holder_constructed(true);
 
-            // Show that it is not yet reclaimed.
+            // Show that it has been reclaimed.
             inst->reclaim_from_cpp = nullptr;
         }
         switch (load_type) {
             case LoadType::PureCpp: {
-                throw std::runtime_error("reclaim_from_cpp should not be required for a pure C++ object. Internal error?");
+                throw std::runtime_error(
+                    "reclaim_from_cpp should not be required for a pure C++ object. "
+                    "Internal error (instance still registered)?");
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
                 auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
                 if (tr == nullptr) {
                     // This shouldn't happen here...
-                    throw std::runtime_error("Bad mojo - could not upcast");
+                    throw std::runtime_error("Internal error?");
                 }
                 // Return newly created object.
                 object obj = tr->release_cpp_lifetime();
