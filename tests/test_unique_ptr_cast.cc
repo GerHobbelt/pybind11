@@ -97,7 +97,7 @@ PYBIND11_MODULE(_move, m) {
     .def(py::init<int>())
     .def("value", &Test::value);
 
-  py::class_<Child, PyCppChild>(m, "Child")
+  py::class_<Child, PyCppChild, Test>(m, "Child")
       .def(py::init<int>())
       .def("value", &Child::value);
 

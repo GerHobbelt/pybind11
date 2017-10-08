@@ -1616,16 +1616,24 @@ protected:
 
     template <typename T = holder_type>
     bool try_implicit_casts(handle src, bool convert) {
+        return false;
+    }
+
+    bool try_direct_conversions(handle src) {
         // Attempt for upcasting.
         // TODO(eric.cousineau): Determine if there is a way to prevent copies from being generated?
         // direct_conversions?
+        const bool convert = true;  // For use with `load_impl`.
         for (auto &cast : typeinfo->implicit_casts) {
             move_only_holder_caster sub_caster(*cast.first);
             // Tentatively surrender access to `obj_exclusive`.
             sub_caster.take_object(release_object());
             if (sub_caster.load(src, convert)) {
                 value = cast.second(sub_caster.value);
-                holder = holder_type(sub_caster.holder, (type *) value);
+                holder.reset(dynamic_cast<type*>(sub_caster.holder.release()));
+                if (holder == nullptr) {
+                    throw std::runtime_error("Internal error");
+                }
                 return true;
             } else {
                 // Give me back my object!
@@ -1634,8 +1642,6 @@ protected:
         }
         return false;
     }
-
-    static bool try_direct_conversions(handle) { return false; }
 
     holder_type holder;
 };
