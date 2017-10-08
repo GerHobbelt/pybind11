@@ -1015,6 +1015,53 @@ auto method_adaptor(Return (Class::*pmf)(Args...)) -> Return (Derived::*)(Args..
 template <typename Derived, typename Return, typename Class, typename... Args>
 auto method_adaptor(Return (Class::*pmf)(Args...) const) -> Return (Derived::*)(Args...) const { return pmf; }
 
+
+
+template <typename type, bool compatible>
+struct trampoline_interface_impl {
+    static void use_cpp_lifetime(type* cppobj, object&& obj) {
+        auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+        if (tr == nullptr) {
+            // This has been invoked at too high of a level; should use a
+            // downcast class's `release_to_cpp` mechanism (if it supports it).
+            throw std::runtime_error(
+                "Attempting to release to C++ using pybind11::trampoline<> "
+                "at too high of a level. Use a class type lower in the hierarchy, such that "
+                "the Python-derived instance actually is part of the lineage of "
+                "pybind11::trampoline<downcast_type>");
+        }
+        // Let the external holder take ownership, but keep instance registered.
+        handle h = obj;
+        tr->use_cpp_lifetime(std::move(obj));
+        assert(h.ref_count() == 1);
+    }
+
+    static object release_cpp_lifetime(type* cppobj) {
+        auto* tr = dynamic_cast<trampoline<type>*>(cppobj);
+        if (tr == nullptr) {
+            // This shouldn't happen here...
+            throw std::runtime_error("Internal error?");
+        }
+        // Return newly created object.
+        return tr->release_cpp_lifetime();
+    }
+    static trampoline<type>* run(type* value, std::false_type) {
+        return nullptr;
+    }
+};
+
+template <typename type>
+struct trampoline_interface_impl<type, false> {
+    static void use_cpp_lifetime(type*, object&&) {
+        // This should be captured by runtime flag.
+        // TODO(eric.cousineau): Runtime flag may not be necessary.
+        throw std::runtime_error("Internal error?");
+    }
+    static object release_cpp_lifetime(type*) {
+        throw std::runtime_error("Internal error?");
+    }
+};
+
 template <typename type_, typename... options>
 class class_ : public detail::generic_type {
     template <typename T> using is_holder = detail::is_holder_type<type_, T>;
@@ -1088,21 +1135,7 @@ public:
         return detail::get_type_info(id);
     }
 
-  template <typename = void>
-  struct get_trampoline_impl {
-    static trampoline<type>* run(type* value, std::true_type) {
-        return dynamic_cast<trampoline<type>*>(value);
-    }
-    static trampoline<type>* run(type* value, std::false_type) {
-        return nullptr;
-    }
-  };
-
-    // Private constructors will wreak havoc...
-    static trampoline<type>* get_trampoline(type* value) {
-        using value_t = typename std::is_polymorphic<type>::type;
-        return get_trampoline_impl<>::run(value, value_t{});
-    }
+    typedef trampoline_interface_impl<type, has_trampoline> trampoline_interface;
 
     static void release_to_cpp(detail::instance* inst, void* external_holder_raw, object&& obj) {
         using detail::LoadType;
@@ -1131,20 +1164,7 @@ public:
                         "pybind11::trampoline<>.");
                 }
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                auto* tr = get_trampoline(cppobj);
-                if (tr == nullptr) {
-                    // This has been invoked at too high of a level; should use a
-                    // downcast class's `release_to_cpp` mechanism (if it supports it).
-                    throw std::runtime_error(
-                        "Attempting to release to C++ using pybind11::trampoline<> "
-                        "at too high of a level. Use a class type lower in the hierarchy, such that "
-                        "the Python-derived instance actually is part of the lineage of "
-                        "pybind11::trampoline<downcast_type>");
-                }
-                // Let the external holder take ownership, but keep instance registered.
-                handle h = obj;
-                tr->use_cpp_lifetime(std::move(obj));
-                assert(h.ref_count() == 1);
+                trampoline_interface::use_cpp_lifetime(cppobj, std::move(obj));
                 break;
             }
             default: {
@@ -1156,10 +1176,7 @@ public:
         external_holder = std::move(holder);
         holder.~holder_type();
         v_h.set_holder_constructed(false);
-
-        // TODO: In this instance, register `reclaim_from_cpp` as the instances reclamation.
         inst->owned = false;
-
         // Register this type's reclamation procedure, since it's trampoline may have the contained object.
         inst->reclaim_from_cpp = reclaim_from_cpp;
     }
@@ -1193,13 +1210,7 @@ public:
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                auto* tr = get_trampoline(cppobj);
-                if (tr == nullptr) {
-                    // This shouldn't happen here...
-                    throw std::runtime_error("Internal error?");
-                }
-                // Return newly created object.
-                object obj = tr->release_cpp_lifetime();
+                object obj = trampoline_interface::release_cpp_lifetime(cppobj);
                 assert(obj.ref_count() == 1);
                 inst->owned = true;
                 return obj;
@@ -1475,6 +1486,7 @@ private:
                  : nullptr;
     }
 };
+
 
 /// Binds an existing constructor taking arguments Args...
 template <typename... Args> detail::initimpl::constructor<Args...> init() { return {}; }
