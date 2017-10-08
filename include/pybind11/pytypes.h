@@ -1307,24 +1307,17 @@ inline iterator iter(handle obj) {
 template <typename Base>
 class trampoline : public Base {
  public:
-  typedef trampoline<Base> DirectBase;
-
   using Base::Base;
 
-    virtual ~trampoline() {
-      std::cout << "trampoline::~trampoline" << std::endl;
-      if (patient_) {
-          // Ensure that we still are the unique one.
-          check("being destructed");
-          // TODO(eric.cousineau): Flip a bit that we shouldn't call the
-          // C++ destructor in tp_dealloc for this instance?
+  // TODO(eric.cousineau): Complain if this is not virtual? (and remove `virtual` specifier in dtor?)
 
-          // Release object.
-          // TODO(eric.cousineau): Ensure that destructor is called instantly!!!
-          release_cpp_lifetime();
-      }
+  virtual ~trampoline() {
+      std::cout << "trampoline::~trampoline" << std::endl;
+      delete_py_if_in_cpp();
   }
 
+  /// To be used by `move_only_holder_caster`.
+  // TODO(eric.cousineau): Make this private to ensure contract?
   void use_cpp_lifetime(object&& patient) {
       if (lives_in_cpp()) {
           throw std::runtime_error("Instance already lives in C++");
@@ -1333,12 +1326,7 @@ class trampoline : public Base {
       check("entering C++");
   }
 
-  bool lives_in_cpp() const {
-      // NOTE: This is *false* if, for whatever reason, the trampoline class is
-      // constructed in C++... Meh.
-      return static_cast<bool>(patient_);
-  }
-
+  /// To be used by `move_only_holder_caster`.
   object release_cpp_lifetime() {
       if (!lives_in_cpp()) {
           throw std::runtime_error("Instance does not live in C++");
@@ -1350,7 +1338,30 @@ class trampoline : public Base {
       return tmp;
   }
 
+ protected:
+  /// Call this if, for whatever reason, your C++ trampoline class `Base` has a non-trivial
+  /// destructor that needs to keep information available to the Python-extended class.
+  // TODO(eric.cousineau): Verify this with an example workflow.
+  void delete_py_if_in_cpp() {
+      if (lives_in_cpp()) {
+          std::cout << "trampoline: releasing C++ owned Python object" << std::endl;
+          // Ensure that we still are the unique one, such that the Python classes
+          // destructor will be called.
+          check("being destructed");
+          // Release object.
+          // TODO(eric.cousineau): Ensure that destructor is called instantly!!!
+          // Can we attach a listener to ensure that `dealloc` is called?
+          release_cpp_lifetime();
+      }
+  }
+
  private:
+  bool lives_in_cpp() const {
+      // NOTE: This is *false* if, for whatever reason, the trampoline class is
+      // constructed in C++... Meh.
+      return static_cast<bool>(patient_);
+  }
+
   // Throw an error if this stuff is not unique.
   void check(const std::string& context) {
       if (patient_.ref_count() != 1) {

@@ -46,6 +46,19 @@ class Child : public Test {
   }
 };
 
+class ChildB : public Test {
+ public:
+  ChildB(int value)
+     : Test(value) {}
+  ~ChildB() {
+    cout << "ChildB::~ChildB()\n";
+  }
+  int value() const override {
+    cout << "ChildB::value()\n";
+    return 10 * Test::value();
+  }
+};
+
 // TODO(eric.cousineau): Add converter for `is_base<T, trampoline<T>>`, only for
 // `cast` (C++ to Python) to handle swapping lifetime control.
 
@@ -61,15 +74,26 @@ class PyTest : public py::trampoline<Test> {
     PYBIND11_OVERLOAD(int, Test, value);
   }
 };
-class PyCppChild : public py::trampoline<Child> {
+class PyChild : public py::trampoline<Child> {
  public:
   typedef py::trampoline<Child> Base;
   using Base::Base;
-  ~PyCppChild() {
-    cout << "PyCppChild::~PyCppChild()" << endl;
+  ~PyChild() {
+    cout << "PyChild::~PyChild()" << endl;
   }
   int value() const override {
     PYBIND11_OVERLOAD(int, Child, value);
+  }
+};
+class PyChildB : public py::trampoline<ChildB> {
+ public:
+  typedef py::trampoline<ChildB> Base;
+  using Base::Base;
+  ~PyChildB() {
+    cout << "PyChildB::~PyChildB()" << endl;
+  }
+  int value() const override {
+    PYBIND11_OVERLOAD(int, ChildB, value);
   }
 };
 
@@ -97,9 +121,14 @@ PYBIND11_MODULE(_move, m) {
     .def(py::init<int>())
     .def("value", &Test::value);
 
-  py::class_<Child, PyCppChild, Test>(m, "Child")
+  py::class_<Child, PyChild, Test>(m, "Child")
       .def(py::init<int>())
       .def("value", &Child::value);
+
+  // NOTE: Not explicit calling `Test` as a base. Relying on Python downcasting via `py_type`.
+  py::class_<ChildB, PyChildB>(m, "ChildB")
+      .def(py::init<int>())
+      .def("value", &ChildB::value);
 
   m.def("check_creation", &check_creation);
 
@@ -124,6 +153,16 @@ class PyExtChild(Child):
     def value(self):
         print("PyExtChild.value")
         return Child.value(self)
+
+class PyExtChildB(ChildB):
+    def __init__(self, value):
+        ChildB.__init__(self, value)
+        print("PyExtChildB.PyExtChildB")
+    def __del__(self):
+        print("PyExtChildB.__del__")
+    def value(self):
+        print("PyExtChildB.value")
+        return ChildB.value(self)
 )", mdict, mdict);
 }
 
@@ -164,6 +203,17 @@ print(obj.value())
 )");
 }
 
+void check_casting_without_explicit_base() {
+  // Check a class which, in C++, derives from the direct type, but not the alias.
+  cout << "\n[ check_casting_without_explicit_base ]\n";
+  py::exec(R"(
+def create_obj():
+    return move.PyExtChildB(30)
+obj = move.check_creation(create_obj)
+print(obj.value())
+)");
+}
+
 int main() {
   {
     py::scoped_interpreter guard{};
@@ -174,7 +224,8 @@ int main() {
 
 //    check_pure_cpp();
 //    check_py_child();
-    check_casting();
+//    check_casting();
+    check_casting_without_explicit_base();
   }
 
   cout << "[ Done ]" << endl;

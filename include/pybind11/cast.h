@@ -1542,11 +1542,9 @@ struct move_only_holder_caster : type_caster_base<type> {
     }
 
     void take_object(object&& obj) {
+        if (obj_exclusive)
+            throw std::runtime_error("Internal error - already have object");
         obj_exclusive = std::move(obj);
-    }
-    object&& release_object() {
-        // Uh...
-        return std::move(obj_exclusive);
     }
 
   // Disable these?
@@ -1572,22 +1570,28 @@ struct move_only_holder_caster : type_caster_base<type> {
             throw std::runtime_error("Non-unique reference, cannot cast to "
                                          "non-copyable holder.");
         }
-//        /// TODO(eric.cousineau): Figure out better way to pass `src` to `load_value`.
-//        this->src_pass = src;
 
         // TODO(eric.cousineau): To reduce number of references, require that a list be passed in,
         // such that the value can be set to zero.
         // That, or figure out where the `py::object` is in this call chain, and set that to zero.
         // Specialize for unique_ptr<>?
 
-        return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
+        // Do not use `load_impl`, as it's not structured conveniently for `unique_ptr`.
+        // Specifically, trying to delegate to resolving to conversion.
+        // return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
+        auto v_h = reinterpret_cast<instance *>(src.ptr())->get_value_and_holder();
+        LoadType load_type = determine_load_type(src, typeinfo);
+        return load_value(std::move(v_h), load_type);
     }
 
     static PYBIND11_DESCR name() { return type_caster_base<type>::name(); }
 
 protected:
-//    handle src_pass;
     object obj_exclusive;
+
+    object&& release_object() {
+        return std::move(obj_exclusive);
+    }
 
     friend class type_caster_generic;
     void check_holder_compat() {
