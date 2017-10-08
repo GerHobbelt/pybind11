@@ -33,6 +33,18 @@ class Test {
   int value_{};
 };
 
+class Child : public Test {
+ public:
+  Child(int value)
+     : Test(value) {}
+  ~Child() {
+    cout << "Child::~Child()\n";
+  }
+  int value() const override {
+    cout << "Child::value()\n";
+    return 10 * Test::value();
+  }
+};
 
 // TODO(eric.cousineau): Add converter for `is_base<T, trampoline<T>>`, only for
 // `cast` (C++ to Python) to handle swapping lifetime control.
@@ -42,13 +54,22 @@ class PyTest : public py::trampoline<Test> {
  public:
   typedef py::trampoline<Test> Base;
   using Base::Base;
-
   ~PyTest() {
     cout << "PyTest::~PyTest()" << endl;
   }
-
   int value() const override {
     PYBIND11_OVERLOAD(int, Test, value);
+  }
+};
+class PyCppChild : public py::trampoline<Child> {
+ public:
+  typedef py::trampoline<Child> Base;
+  using Base::Base;
+  ~PyCppChild() {
+    cout << "PyCppChild::~PyCppChild()" << endl;
+  }
+  int value() const override {
+    PYBIND11_OVERLOAD(int, Child, value);
   }
 };
 
@@ -76,6 +97,10 @@ PYBIND11_MODULE(_move, m) {
     .def(py::init<int>())
     .def("value", &Test::value);
 
+  py::class_<Child, PyCppChild>(m, "Child")
+      .def(py::init<int>())
+      .def("value", &Child::value);
+
   m.def("check_creation", &check_creation);
 
   auto mdict = m.attr("__dict__");
@@ -89,6 +114,16 @@ class PyExtTest(Test):
     def value(self):
         print("PyExtTest.value")
         return Test.value(self)
+
+class PyExtChild(Child):
+    def __init__(self, value):
+        Child.__init__(self, value)
+        print("PyExtChild.PyExtChild")
+    def __del__(self):
+        print("PyExtChild.__del__")
+    def value(self):
+        print("PyExtChild.value")
+        return Child.value(self)
 )", mdict, mdict);
 }
 
@@ -108,10 +143,22 @@ print(obj.value())
 }
 
 void check_py_child() {
+  // Check ownership for a Python-extended C++ class.
   cout << "\n[ check_py_child ]\n";
   py::exec(R"(
 def create_obj():
     return move.PyExtTest(20)
+obj = move.check_creation(create_obj)
+print(obj.value())
+)");
+}
+
+void check_casting() {
+  // Check a class which, in C++, derives from the direct type, but not the alias.
+  cout << "\n[ check_casting ]\n";
+  py::exec(R"(
+def create_obj():
+    return move.PyExtChild(30)
 obj = move.check_creation(create_obj)
 print(obj.value())
 )");
@@ -125,8 +172,9 @@ int main() {
     custom_init_move(m);
     py::globals()["move"] = m;
 
-    check_pure_cpp();
-    check_py_child();
+//    check_pure_cpp();
+//    check_py_child();
+    check_casting();
   }
 
   cout << "[ Done ]" << endl;
