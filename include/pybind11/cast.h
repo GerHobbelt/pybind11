@@ -483,7 +483,9 @@ enum class LoadType {
   PureCpp,
   DerivedCppSinglePySingle,
   DerivedCppSinglePyMulti,
-  DerivedCppMulti
+  DerivedCppMulti,
+  /// Polymorphic casting or copy-based casting may be necessary.
+  ConversionNeeded,
 };
 
 typedef type_info* base_ptr_t;
@@ -540,7 +542,7 @@ LoadType determine_load_type(handle src, const type_info* typeinfo,
         // when MI is involved).
         return LoadType::DerivedCppMulti;
     } else {
-        throw std::runtime_error("Unknown load type?");
+        return LoadType::ConversionNeeded;
     }
 }
 
@@ -738,6 +740,9 @@ public:
             case LoadType::DerivedCppMulti: {
                 if (this_.try_implicit_casts(src, convert))
                     return true;
+            }
+            case LoadType::ConversionNeeded: {
+                break;
             }
         }
 
@@ -1539,6 +1544,10 @@ struct move_only_holder_caster : type_caster_base<type> {
     void take_object(object&& obj) {
         obj_exclusive = std::move(obj);
     }
+    object&& release_object() {
+        // Uh...
+        return std::move(obj_exclusive);
+    }
 
   // Disable these?
   explicit operator type*() { return this->value; }
@@ -1605,7 +1614,26 @@ protected:
         return true;
     }
 
-    bool try_implicit_casts(handle, bool) { return false; }
+    template <typename T = holder_type>
+    bool try_implicit_casts(handle src, bool convert) {
+        // Attempt for upcasting.
+        // TODO(eric.cousineau): Determine if there is a way to prevent copies from being generated?
+        // direct_conversions?
+        for (auto &cast : typeinfo->implicit_casts) {
+            move_only_holder_caster sub_caster(*cast.first);
+            // Tentatively surrender access to `obj_exclusive`.
+            sub_caster.take_object(release_object());
+            if (sub_caster.load(src, convert)) {
+                value = cast.second(sub_caster.value);
+                holder = holder_type(sub_caster.holder, (type *) value);
+                return true;
+            } else {
+                // Give me back my object!
+                take_object(sub_caster.release_object());
+            }
+        }
+        return false;
+    }
 
     static bool try_direct_conversions(handle) { return false; }
 
