@@ -138,6 +138,13 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
   return in;
 }
 
+// Check casting.
+unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base>&& in) {
+  cout << "Pass through" << endl;
+  cout << in->value()<< endl;
+  return in;
+}
+
 PYBIND11_MODULE(_move, m) {
   py::class_<Base, PyBase>(m, "Base")
     .def(py::init<int>())
@@ -153,6 +160,7 @@ PYBIND11_MODULE(_move, m) {
       .def("value", &ChildB::value);
 
   m.def("check_creation", &check_creation);
+  m.def("check_cast_pass_thru", &check_cast_pass_thru);
 
   // Make sure this setup doesn't botch the usage of `shared_ptr`, compile or run-time.
   class SharedClass {};
@@ -222,6 +230,8 @@ def create_obj():
 obj = move.check_creation(create_obj)
 print(obj.value())
 del obj
+
+check_cast_pass_thru(create_obj())
 )");
 }
 
