@@ -1573,6 +1573,10 @@ struct move_only_holder_caster : type_caster_base<type> {
         // Ensure that we have exclusive control (with `object` reference count control) over the entering object.
         // That way, we maintain complete control, and do not need to worry about stacked function calls.
 
+        // TODO(eric.cousineau): Inconsistency will be absolutely painful. Thinking about, move'ing the return value of a function
+        // may work with the exact type desired, but it most likely *won't* work if the type is wrapped in a `move` container.
+        // Solution: Check more aggressively if this is a move container.
+
         // @note Since returning from a function call does not have additional references, we simply check comparison.
         // If there is a cast<>, then `obj_exclusive` would initially be the move-container, but upon swapping this with the
         // actual value, the reference to the move-container will be discarded.
@@ -1583,6 +1587,7 @@ struct move_only_holder_caster : type_caster_base<type> {
             // If we do not yet own the incoming object, test and see if this is a pybind11-supported `move` container.
             if (isinstance(src, (PyObject*)&PyList_Type)) {
                 // Extract the object from a single-item list.
+                // @note This will break implicit casting when constructing from vectors, but eh, who cares.
                 list li = src.cast<list>();
                 if (li.size() != 1) {
                     throw std::runtime_error("List as a move container must only have one item.");
