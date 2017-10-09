@@ -250,13 +250,16 @@ void check_pass_thru() {
     auto m = py::globals()["move"];
     auto base_py_type = m.attr("Base");
     py::object func = m.attr("check_cast_pass_thru");
-//    py::object obj = base_py_type(10);
-//    py::object pass = func(std::move(obj));  // Does NOT work. Too many references, due to argument packing?
+    py::object obj = base_py_type(10);
+    py::handle h = obj.release();
+    cout << "ref_count: " << h.ref_count() << endl;
+    py::object pass = func(h);  // Does NOT work. Too many references, due to argument packing?
 
     // ISSUE: For some reason, when packing the argument list, the unique reference lives just within
     // the `simple_collector`, forwarded as a `py::tuple`.
     // When the function call returns, then that object goes out of scope, causing destruction.
-    py::object pass = func(make_unique<Base>(10));  // Rely on casting.
+//    py::object pass = func(make_unique<Base>(10));  // Rely on casting.
+
     int value = pass.attr("value")().cast<int>();
     cout << "Value: " << value << endl;
 
