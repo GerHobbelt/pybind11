@@ -1655,11 +1655,12 @@ protected:
                 break;
             }
             // If the base type is explicitly mentioned, then we can rely on `DerivedCppSinglePySingle` being used.
-            // This may be that we have a C++ type inheriting from another C++ type. In this case, we delegate.
-            // Otherwise, we should try dynamically downcast (via Python) to find the appropriate release mechanism.
             case LoadType::DerivedCppSinglePySingle:
+                // However, if it is not, it may be that we have a C++ type inheriting from another C++ type without the inheritance being registered.
+                // In this case, we delegate by effectively downcasting in Python by finding the lowest-level type.
+                // @note No `break` here on purpose!
             case LoadType::ConversionNeeded: {
-                // Try to get the lowest-hierarchy (closets to child class) of the type.
+                    // Try to get the lowest-hierarchy (closets to child class) of the type.
                 // The usage of `get_type_info` implicitly requires single inheritance.
                 auto* py_type = (PyTypeObject*)obj_exclusive.get_type().ptr();
                 lowest_type = detail::get_type_info(py_type);
