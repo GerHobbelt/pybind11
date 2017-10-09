@@ -249,6 +249,11 @@ del obj
 
 void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
+
+    py::exec(R"(
+print(move.check_clone(move.Base(20)).value())
+)");
+
     auto m = py::globals()["move"];
     auto base_py_type = m.attr("Base");
     py::object func = m.attr("check_cast_pass_thru");
