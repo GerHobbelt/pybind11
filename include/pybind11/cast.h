@@ -1535,11 +1535,11 @@ struct move_only_holder_caster : type_caster_base<type> {
     using base::typeinfo;
     using base::value;
 
-    ~move_only_holder_caster() {
-        if (obj_exclusive) {
-            std::cout << "Internal error: Caster has not released ownership?\n";
-        }
-    }
+//    ~move_only_holder_caster() {
+//        if (obj_exclusive) {
+//            std::cout << "Internal error: Caster has not released ownership?\n";
+//        }
+//    }
 
     static_assert(std::is_base_of<type_caster_base<type>, type_caster<type>>::value,
             "Holder classes are only supported for custom types");
@@ -1549,11 +1549,11 @@ struct move_only_holder_caster : type_caster_base<type> {
         return type_caster_base<type>::cast_holder(ptr, &src);
     }
 
-    void take_object(object&& obj) {
-        if (obj_exclusive)
-            throw std::runtime_error("Internal error - already have object");
-        obj_exclusive = std::move(obj);
-    }
+//    void take_object(object&& obj) {
+//        if (obj_exclusive)
+//            throw std::runtime_error("Internal error - already have object");
+//        obj_exclusive = std::move(obj);
+//    }
 
   // Disable these?
   explicit operator type*() { return this->value; }
@@ -1597,7 +1597,7 @@ struct move_only_holder_caster : type_caster_base<type> {
         // may work with the exact type desired, but it most likely *won't* work if the type is wrapped in a `move` container.
         // Solution: Check more aggressively if this is a move container.
 
-        obj_exclusive = extract_from_container(src);
+        object obj_exclusive = extract_from_container(src);
         if (obj_exclusive.ref_count() != 1) {
             throw std::runtime_error("Non-unique reference, cannot cast to unique_ptr.");
         }
@@ -1613,17 +1613,17 @@ struct move_only_holder_caster : type_caster_base<type> {
         check_holder_compat();
         auto v_h = reinterpret_cast<instance *>(obj_exclusive.ptr())->get_value_and_holder();
         LoadType load_type = determine_load_type(obj_exclusive, typeinfo);
-        return load_value(std::move(v_h), load_type);
+        return load_value(std::move(obj_exclusive), std::move(v_h), load_type);
     }
 
     static PYBIND11_DESCR name() { return type_caster_base<type>::name(); }
 
 protected:
-    object obj_exclusive;
+//    object obj_exclusive;
 
-    object&& release_object() {
-        return std::move(obj_exclusive);
-    }
+//    object&& release_object() {
+//        return std::move(obj_exclusive);
+//    }
 
     friend class type_caster_generic;
     void check_holder_compat() {
@@ -1631,7 +1631,7 @@ protected:
             throw cast_error("Unable to load a non-default holder type (unique_ptr)");
     }
 
-    bool load_value(value_and_holder &&v_h, LoadType load_type) {
+    bool load_value(object obj_exclusive, value_and_holder &&v_h, LoadType load_type) {
         // TODO(eric.cousineau): This should try and find the downcast-lowest
         // level (closest to child) `release_to_cpp` method that is derived-releasable
         // (which derives from `trampoline<type>`).
@@ -1874,12 +1874,12 @@ std::false_type is_unique_ptr(...);
 
 template <typename T>
 void do_prepare_caster(detail::make_caster<T>& conv, object&& obj, std::true_type) {
-    conv.take_object(std::move(obj));
+    // Multiple options complicate the interface.
+//    conv.take_object(std::move(obj));
 }
 
 template <typename T>
 void do_prepare_caster(detail::make_caster<T>& conv, handle h, std::true_type) {
-    std::cout << "Not stealing reference" << std::endl;
 //    std::cout << "Stealing reference!" << std::endl;
 //    object obj = reinterpret_steal<object>(h);
 //    // Caster (move_only_holder_caster) will check that this is a unique reference.
