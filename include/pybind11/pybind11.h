@@ -1153,6 +1153,12 @@ public:
                 // Also, even if this instance is of a class derived from a Base that has a
                 // trampoline-wrapper alias, we do not need to worry about not being in the correct
                 // hierarchy, since we will simply release from it.
+
+                // TODO(eric.cousineau): Presently, there is no support for a consistent use of weak references.
+                // If a PureCpp object is released from Python, then all weak references are invalidated,
+                // even if it comes back...
+                // Ideally, this could check if there are weak references. But to whom should the lifetime be extended?
+                // Perhaps the first weak reference that is available?
                 break;
             }
             case LoadType::DerivedCppSinglePySingle: {
@@ -1215,10 +1221,8 @@ public:
                 // However, in a direct pass-through case (which should be rare), the Python reference
                 // may stay alive before returning, in which case we do nothing, and just pass the
                 // existing reference.
+                // TODO(eric.cousineau): This would change if weak references were somehow supported.
                 throw std::runtime_error("Should not be called. Period.");
-                // TODO(eric.cousineau): Getting a memory leak here...
-                obj = reinterpret_steal<object>(h);
-                break;
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
