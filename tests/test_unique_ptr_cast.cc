@@ -158,6 +158,10 @@ unique_ptr<Base> check_clone(unique_ptr<Base> in) {
   return out;
 }
 
+unique_ptr<Base> check_new() {
+    return make_unique<Base>(10);
+}
+
 PYBIND11_MODULE(_move, m) {
   py::class_<Base, PyBase>(m, "Base")
     .def(py::init<int>())
@@ -175,6 +179,7 @@ PYBIND11_MODULE(_move, m) {
   m.def("check_creation", &check_creation);
   m.def("check_cast_pass_thru", &check_cast_pass_thru);
   m.def("check_clone", &check_clone);
+  m.def("check_new", &check_new);
 
   // Make sure this setup doesn't botch the usage of `shared_ptr`, compile or run-time.
   class SharedClass {};
@@ -251,7 +256,7 @@ void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
 
     py::exec(R"(
-obj = move.check_clone(move.Base(20))
+obj = move.check_new()  # clone(move.Base(20))
 print(obj)
 # print(obj.value())
 )");
