@@ -258,7 +258,7 @@ void check_pure_cpp_simple() {
   cout << "\n[ check_pure_cpp_simple ]\n";
   py::exec(R"(
 def create_obj():
-    return move.SimpleType(256)
+    return [move.SimpleType(256)]
 obj = move.check_creation_simple(create_obj)
 print(obj.value())
 del obj  # Calling `del` since scoping isn't as tight here???
@@ -269,7 +269,7 @@ void check_pure_cpp() {
   cout << "\n[ check_pure_cpp ]\n";
   py::exec(R"(
 def create_obj():
-    return move.Base(10)
+    return [move.Base(10)]
 obj = move.check_creation(create_obj)
 print(obj.value())
 del obj
@@ -370,11 +370,11 @@ int main() {
     py::globals()["move"] = m;
 
     check_pass_thru();
-//    check_pure_cpp_simple();
-//    check_pure_cpp();
-//    check_py_child();
-//    check_casting();
-//    check_casting_without_explicit_base();
+    check_pure_cpp_simple();
+    check_pure_cpp();
+    check_py_child();
+    check_casting();
+    check_casting_without_explicit_base();
   }
 
   cout << "[ Done ]" << endl;
