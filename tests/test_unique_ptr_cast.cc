@@ -146,7 +146,6 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
 unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) { //py::handle h) { //
 //  py::object py_in = py::reinterpret_steal<py::object>(h);
 //  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
-
   cout << "Pass through: " << in->value()<< endl;
   return in;
 }
@@ -281,8 +280,11 @@ void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
 
     py::exec(R"(
-obj = move.check_cast_pass_thru(move.PyMove(move.Base(20)))
-print(obj)
+obj = move.check_cast_pass_thru([move.Base(20)])
+print(obj.value())
+del obj
+
+obj = move.check_clone([move.Base(30)])
 print(obj.value())
 del obj
 )");
