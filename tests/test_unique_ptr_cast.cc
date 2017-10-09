@@ -143,12 +143,12 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
 // Presently, `pybind11` increases that reference count if `object` is an argument.
 
 // Check casting.
-unique_ptr<Base> check_cast_pass_thru(py::handle h) { //unique_ptr<Base> in) {
-  py::object py_in = py::reinterpret_steal<py::object>(h);
-  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
+unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) { //py::handle h) { //
+//  py::object py_in = py::reinterpret_steal<py::object>(h);
+//  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
 
   cout << "Pass through: " << in->value()<< endl;
-  return in;
+  return nullptr;
 }
 
 unique_ptr<Base> check_clone(unique_ptr<Base> in) {
@@ -223,6 +223,31 @@ class PyExtChildB(ChildB):
         print("PyExtChildB.value")
         return ChildB.value(self)
 )", mdict, mdict);
+
+    // Define move container thing
+    py::exec(R"(
+class PyMove:
+    """ Provide a wrapper to permit passing an object to be owned by C++ """
+    _is_move_container = True
+
+    def __init__(self, obj):
+        assert obj is not None
+        self._obj = obj
+
+    def release(self):
+        from sys import getrefcount
+        obj = self._obj
+        self._obj = None
+        ref_count = getrefcount(obj)
+        # Cannot use `assert ...`, because it will leave a latent reference?
+        # Consider a `with` reference?
+        if ref_count > 2:
+            obj = None
+            raise AssertionError("Object reference is not unique, got {} extra references".format(ref_count - 2))
+        else:
+            assert ref_count == 2
+            return obj
+)", py::globals(), mdict);
 }
 
 // Export this to get access as we desire.
@@ -256,7 +281,7 @@ void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
 
     py::exec(R"(
-obj = move.check_new()  # clone(move.Base(20))
+obj = move.check_cast_pass_thru(move.PyMove(move.Base(20)))
 print(obj)
 # print(obj.value())
 )");

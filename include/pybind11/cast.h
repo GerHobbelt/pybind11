@@ -1570,13 +1570,26 @@ struct move_only_holder_caster : type_caster_base<type> {
   #endif
 
     bool load(handle src, bool convert) {
-        if (!src.is(obj_exclusive)) {
-            throw std::runtime_error("May only use std::move() for unique_ptr casting");
+        bool good_object = false;
+        if (src.is(obj_exclusive)) {
+            good_object = true;
+        } else {
+            // If we do not yet own the incoming object, test and see if this is a pybind11-supported `move` container.
+            if (hasattr(src, "_is_move_container")) {
+                // Try to extract the value with `release()`.
+                obj_exclusive = src.attr("release")();
+                good_object = true;
+            }
+        }
+
+        if (!good_object) {
+            throw std::runtime_error(
+                "Only use cast<unique_ptr<T>>() with a Python move-container, "
+                "or ensure that you call cast<unique_ptr<T>(std::move(obj))");
         }
 
         if (obj_exclusive.ref_count() != 1) {
-            throw std::runtime_error("Non-unique reference, cannot cast to "
-                                         "non-copyable holder.");
+            throw std::runtime_error("Non-unique reference, cannot cast to unique_ptr.");
         }
 
         // TODO(eric.cousineau): To reduce number of references, require that a list be passed in,
@@ -1588,8 +1601,8 @@ struct move_only_holder_caster : type_caster_base<type> {
         // Specifically, trying to delegate to resolving to conversion.
         // return base::template load_impl<move_only_holder_caster<type, holder_type>>(src, convert);
         check_holder_compat();
-        auto v_h = reinterpret_cast<instance *>(src.ptr())->get_value_and_holder();
-        LoadType load_type = determine_load_type(src, typeinfo);
+        auto v_h = reinterpret_cast<instance *>(obj_exclusive.ptr())->get_value_and_holder();
+        LoadType load_type = determine_load_type(obj_exclusive, typeinfo);
         return load_value(std::move(v_h), load_type);
     }
 
@@ -1856,10 +1869,11 @@ void do_prepare_caster(detail::make_caster<T>& conv, object&& obj, std::true_typ
 
 template <typename T>
 void do_prepare_caster(detail::make_caster<T>& conv, handle h, std::true_type) {
-    std::cout << "Stealing reference!" << std::endl;
-    object obj = reinterpret_steal<object>(h);
-    // Caster (move_only_holder_caster) will check that this is a unique reference.
-    do_prepare_caster<T>(conv, std::move(obj), std::true_type{});
+    std::cout << "Not stealing reference" << std::endl;
+//    std::cout << "Stealing reference!" << std::endl;
+//    object obj = reinterpret_steal<object>(h);
+//    // Caster (move_only_holder_caster) will check that this is a unique reference.
+//    do_prepare_caster<T>(conv, std::move(obj), std::true_type{});
 }
 
 template <typename T>
