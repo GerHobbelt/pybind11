@@ -148,7 +148,7 @@ unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) { //py::handle h) { /
 //  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
 
   cout << "Pass through: " << in->value()<< endl;
-  return nullptr;
+  return in;
 }
 
 unique_ptr<Base> check_clone(unique_ptr<Base> in) {
@@ -283,7 +283,8 @@ void check_pass_thru() {
     py::exec(R"(
 obj = move.check_cast_pass_thru(move.PyMove(move.Base(20)))
 print(obj)
-# print(obj.value())
+print(obj.value())
+del obj
 )");
 
     if (false) {
