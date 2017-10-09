@@ -1182,11 +1182,9 @@ public:
 
         handle h = obj;
         if (obj) {
-            std::cout << "Kill remaining object reference" << std::endl;
-            std::cout << "Ref count pre: " << h.ref_count() << std::endl;
+            // Narrow scope of remaining object.
             object obj_kill = std::move(obj);
         }
-        std::cout << "Ref count post: " << h.ref_count() << std::endl;
     }
 
     static object reclaim_from_cpp(detail::instance* inst, void* external_holder_raw) {

@@ -145,8 +145,7 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
 // Check casting.
 unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) {
 //  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
-  cout << "Pass through" << endl;
-  cout << in->value()<< endl;
+  cout << "Pass through: " << in->value()<< endl;
   return in;
 }
 
@@ -248,15 +247,33 @@ del obj
 
 void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
-    py::dict locals;
-    py::exec(R"(
-obj = move.check_cast_pass_thru(move.Base(10))
-# print(move.check_clone(move.Base(20)).value())
-)", py::globals(), locals);
-    py::exec(R"(
-print("instance: {}".format(obj))
-print("Obj: {}".format(obj.value()))
-)", py::globals(), locals);
+    auto m = py::globals()["move"];
+    auto base_py_type = m.attr("Base");
+    py::object func = m.attr("check_cast_pass_thru");
+//    py::object obj = base_py_type(10);
+//    py::object pass = func(std::move(obj));  // Does NOT work. Too many references, due to argument packing?
+
+    // ISSUE: For some reason, when packing the argument list, the unique reference lives just within
+    // the `simple_collector`, forwarded as a `py::tuple`.
+    // When the function call returns, then that object goes out of scope, causing destruction.
+    py::object pass = func(make_unique<Base>(10));  // Rely on casting.
+    int value = pass.attr("value")().cast<int>();
+    cout << "Value: " << value << endl;
+
+//    py::dict locals;
+//    py::exec(R"(
+//obj = move.check_cast_pass_thru(move.Base(10))
+//# print(move.check_clone(move.Base(20)).value())
+//)", py::globals(), locals);
+//    // MEMORY LEAK
+//    py::exec(R"(
+//print("Locals: {}".format(locals()))
+//print("Globals: {}".format(globals()))
+//)", py::globals(), locals);
+//    py::exec(R"(
+//print("instance: {}".format(obj))
+//print("Obj: {}".format(obj.value()))
+//)", py::globals(), locals);
 }
 
 void check_py_child() {
