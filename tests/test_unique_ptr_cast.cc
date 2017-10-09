@@ -330,7 +330,7 @@ void check_py_child() {
   cout << "\n[ check_py_child ]\n";
   py::exec(R"(
 def create_obj():
-    return move.PyExtBase(20)
+    return [move.PyExtBase(20)]
 obj = move.check_creation(create_obj)
 print(obj.value())
 del obj
@@ -342,7 +342,7 @@ void check_casting() {
   cout << "\n[ check_casting ]\n";
   py::exec(R"(
 def create_obj():
-    return move.PyExtChild(30)
+    return [move.PyExtChild(30)]
 obj = move.check_creation(create_obj)
 print(obj.value())
 del obj
@@ -354,7 +354,7 @@ void check_casting_without_explicit_base() {
   cout << "\n[ check_casting_without_explicit_base ]\n";
   py::exec(R"(
 def create_obj():
-    return move.PyExtChildB(30)
+    return [move.PyExtChildB(30)]
 obj = move.check_creation(create_obj)
 print(obj.value())
 del obj

@@ -1537,7 +1537,7 @@ struct move_only_holder_caster : type_caster_base<type> {
 
     ~move_only_holder_caster() {
         if (obj_exclusive) {
-            throw std::runtime_error("Internal error: Caster has not released ownership?");
+            std::cout << "Internal error: Caster has not released ownership?\n";
         }
     }
 
@@ -1569,6 +1569,26 @@ struct move_only_holder_caster : type_caster_base<type> {
   explicit operator holder_type&() { return holder; }
   #endif
 
+    object extract_from_container(handle src) {
+        // See if this is a supported `move` container.
+        if (isinstance(src, (PyObject*)&PyList_Type) && PyList_Size(src.ptr()) == 1) {
+            // Extract the object from a single-item list, and remove the existing reference so we have exclusive control.
+            // @note This will break implicit casting when constructing from vectors, but eh, who cares.
+            // Swap.
+            list li = src.cast<list>();
+            object obj = li[0];
+            li[0] = none();
+            return obj;
+        } else if (hasattr(src, "_is_move_container")) {
+            // Try to extract the value with `release()`.
+            return src.attr("release")();
+        } else {
+            throw std::runtime_error(
+                "Only use cast<unique_ptr<T>>() with a Python move-container (such as a single-item list), "
+                "or ensure that you call cast<unique_ptr<T>(std::move(obj))");
+        }
+    }
+
     bool load(handle src, bool convert) {
         // Ensure that we have exclusive control (with `object` reference count control) over the entering object.
         // That way, we maintain complete control, and do not need to worry about stacked function calls.
@@ -1577,37 +1597,7 @@ struct move_only_holder_caster : type_caster_base<type> {
         // may work with the exact type desired, but it most likely *won't* work if the type is wrapped in a `move` container.
         // Solution: Check more aggressively if this is a move container.
 
-        // @note Since returning from a function call does not have additional references, we simply check comparison.
-        // If there is a cast<>, then `obj_exclusive` would initially be the move-container, but upon swapping this with the
-        // actual value, the reference to the move-container will be discarded.
-        bool good_object = false;
-        if (src.is(obj_exclusive)) {
-            good_object = true;
-        } else {
-            // If we do not yet own the incoming object, test and see if this is a pybind11-supported `move` container.
-            if (isinstance(src, (PyObject*)&PyList_Type)) {
-                // Extract the object from a single-item list.
-                // @note This will break implicit casting when constructing from vectors, but eh, who cares.
-                list li = src.cast<list>();
-                if (li.size() != 1) {
-                    throw std::runtime_error("List as a move container must only have one item.");
-                }
-                obj_exclusive = li[0];
-                li[0] = none();
-                good_object = true;
-            } else if (hasattr(src, "_is_move_container")) {
-                // Try to extract the value with `release()`.
-                obj_exclusive = src.attr("release")();
-                good_object = true;
-            }
-        }
-
-        if (!good_object) {
-            throw std::runtime_error(
-                "Only use cast<unique_ptr<T>>() with a Python move-container (such as a single-item list), "
-                "or ensure that you call cast<unique_ptr<T>(std::move(obj))");
-        }
-
+        obj_exclusive = extract_from_container(src);
         if (obj_exclusive.ref_count() != 1) {
             throw std::runtime_error("Non-unique reference, cannot cast to unique_ptr.");
         }
