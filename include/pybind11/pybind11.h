@@ -1179,10 +1179,14 @@ public:
         inst->owned = false;
         // Register this type's reclamation procedure, since it's trampoline may have the contained object.
         inst->reclaim_from_cpp = reclaim_from_cpp;
+
+        handle h = obj;
         if (obj) {
             std::cout << "Kill remaining object reference" << std::endl;
+            std::cout << "Ref count pre: " << h.ref_count() << std::endl;
             object obj_kill = std::move(obj);
         }
+        std::cout << "Ref count post: " << h.ref_count() << std::endl;
     }
 
     static object reclaim_from_cpp(detail::instance* inst, void* external_holder_raw) {
@@ -1213,6 +1217,7 @@ public:
                 // However, in a direct pass-through case (which should be rare), the Python reference
                 // may stay alive before returning, in which case we do nothing, and just pass the
                 // existing reference.
+                throw std::runtime_error("Should not be called. Period.");
                 // TODO(eric.cousineau): Getting a memory leak here...
                 obj = reinterpret_steal<object>(h);
                 break;

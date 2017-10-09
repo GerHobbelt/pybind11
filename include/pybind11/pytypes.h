@@ -206,7 +206,9 @@ public:
     /// Move constructor; steals the object from ``other`` and preserves its reference count
     object(object &&other) noexcept { m_ptr = other.m_ptr; other.m_ptr = nullptr; }
     /// Destructor; automatically calls `handle::dec_ref()`
-    ~object() { dec_ref(); }
+    ~object() {
+        dec_ref();
+    }
 
     /** \rst
         Resets the internal pointer to ``nullptr`` without without decreasing the

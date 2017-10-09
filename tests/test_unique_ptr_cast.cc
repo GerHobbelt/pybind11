@@ -248,10 +248,15 @@ del obj
 
 void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
+    py::dict locals;
     py::exec(R"(
-print(move.check_cast_pass_thru(move.Base(10)).value())
+obj = move.check_cast_pass_thru(move.Base(10))
 # print(move.check_clone(move.Base(20)).value())
-)");
+)", py::globals(), locals);
+    py::exec(R"(
+print("instance: {}".format(obj))
+print("Obj: {}".format(obj.value()))
+)", py::globals(), locals);
 }
 
 void check_py_child() {
