@@ -251,8 +251,12 @@ void check_pass_thru() {
     cout << "\n[ check_pure_cpp ]\n";
 
     py::exec(R"(
-print(move.check_clone(move.Base(20)).value())
+obj = move.check_clone(move.Base(20))
+print(obj)
+# print(obj.value())
 )");
+
+    if (false) {
 
     auto m = py::globals()["move"];
     auto base_py_type = m.attr("Base");
@@ -269,6 +273,8 @@ print(move.check_clone(move.Base(20)).value())
 
     int value = pass.attr("value")().cast<int>();
     cout << "Value: " << value << endl;
+
+    }
 
 //    py::dict locals;
 //    py::exec(R"(

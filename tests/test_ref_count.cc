@@ -31,15 +31,18 @@ class SimpleType {
 };
 
 // Check casting.
-void check(py::handle py_in) {
+py::handle check(py::handle py_in) {
   cout << "Pass through: " << py_in.ref_count() << endl;
   if (py_in.ref_count() == 1) {
     // Steal as an object.
     auto obj = py::reinterpret_steal<py::object>(py_in);
     cout << "- Stole: " << obj.ref_count() << endl;
     // Causes object to be destructed here.
+    return obj.release();
+  } else {
+    return py_in;
   }
-  cout << "- Return" << endl;
+//  cout << "- Return" << endl;
 }
 
 PYBIND11_MODULE(_move, m) {
