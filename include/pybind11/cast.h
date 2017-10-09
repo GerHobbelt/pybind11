@@ -1535,6 +1535,12 @@ struct move_only_holder_caster : type_caster_base<type> {
     using base::typeinfo;
     using base::value;
 
+    ~move_only_holder_caster() {
+        if (obj_exclusive) {
+            throw std::runtime_error("Internal error: Caster has not released ownership?");
+        }
+    }
+
     static_assert(std::is_base_of<type_caster_base<type>, type_caster<type>>::value,
             "Holder classes are only supported for custom types");
 

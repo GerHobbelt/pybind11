@@ -1179,6 +1179,10 @@ public:
         inst->owned = false;
         // Register this type's reclamation procedure, since it's trampoline may have the contained object.
         inst->reclaim_from_cpp = reclaim_from_cpp;
+        if (obj) {
+            std::cout << "Kill remaining object reference" << std::endl;
+            object obj_kill = std::move(obj);
+        }
     }
 
     static object reclaim_from_cpp(detail::instance* inst, void* external_holder_raw) {
@@ -1202,25 +1206,29 @@ public:
             // Show that it has been reclaimed.
             inst->reclaim_from_cpp = nullptr;
         }
+        object obj;
         switch (load_type) {
             case LoadType::PureCpp: {
                 // This should generally not be called.
                 // However, in a direct pass-through case (which should be rare), the Python reference
                 // may stay alive before returning, in which case we do nothing, and just pass the
-                // (stolen) existing reference.
-                return reinterpret_steal<object>(h);
+                // existing reference.
+                // TODO(eric.cousineau): Getting a memory leak here...
+                obj = reinterpret_steal<object>(h);
+                break;
             }
             case LoadType::DerivedCppSinglePySingle: {
                 auto* cppobj = reinterpret_cast<type*>(v_h.value_ptr());
-                object obj = trampoline_interface::release_cpp_lifetime(cppobj);
-                assert(obj.ref_count() == 1);
-                inst->owned = true;
-                return obj;
+                obj = trampoline_interface::release_cpp_lifetime(cppobj);
+                break;
             }
             default: {
                 throw std::runtime_error("Unsupported load type");
             }
         }
+        assert(obj.ref_count() == 1);
+        inst->owned = true;
+        return obj;
     }
 
     template <typename Base, detail::enable_if_t<is_base<Base>::value, int> = 0>
