@@ -2123,6 +2123,10 @@ private:
     bool load_impl_sequence(function_call &call, index_sequence<Is...>) {
         // TODO(eric.cousineau): Based on the argcaster, need to ensure we can pass `take_ownership`.
         // But the argument - how do we still `obj` from the argument???
+
+        // TODO(eric.cousineau): Is there a way to access a cpp_function's original reference count?
+        // Set the tuple from `simple_converter`?
+
 //        for (bool r : {std::get<Is>(argcasters).load(call.args[Is], call.args_convert[Is])...})
         for (bool r : {do_caster_load<Args>(std::get<Is>(argcasters), call.args[Is], call.args_convert[Is])...})
             if (!r)

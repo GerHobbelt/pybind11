@@ -143,8 +143,10 @@ unique_ptr<SimpleType> check_creation_simple(py::function create_obj) {
 // Presently, `pybind11` increases that reference count if `object` is an argument.
 
 // Check casting.
-unique_ptr<Base> check_cast_pass_thru(unique_ptr<Base> in) {
-//  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
+unique_ptr<Base> check_cast_pass_thru(py::handle h) { //unique_ptr<Base> in) {
+  py::object py_in = py::reinterpret_steal<py::object>(h);
+  auto in = py::cast<unique_ptr<Base>>(std::move(py_in));
+
   cout << "Pass through: " << in->value()<< endl;
   return in;
 }
